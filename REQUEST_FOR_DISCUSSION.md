@@ -143,7 +143,7 @@ message QueryJobRequest {
 }
 
 message QueryJobResponse { 
-  JobStatus status = 1; // Status of the job.
+  JobState state = 1; // State of the job.
   int32 exit_code = 2; // Exit code of the job.
 }
 
@@ -155,13 +155,13 @@ message StreamJobOutputResponse {
   bytes output = 1; // Streamed bytes from the jobs output.
 }
 
-enum JobStatus {
-  JOB_STATUS_UNSPECIFIED = 0;
-  JOB_STATUS_CREATED = 1; // Job configured and resources allocated successfully.
-  JOB_STATUS_STARTED = 2; // Program specified by job has started.
-  JOB_STATUS_STOPPING = 3; // Program specified by job is stopping, e.g. received SIGTERM but not yet exited.
-  JOB_STATUS_STOPPED = 4; // Program specified by job has exited with an exit code.
-  JOB_STATUS_FAILED = 5; // A failure as a result of an error returned from the service, e.g. server unable to allocate resources.
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_CREATED = 1; // Job configured and resources allocated successfully.
+  JOB_STATE_STARTED = 2; // Program specified by job has started.
+  JOB_STATE_STOPPING = 3; // Program specified by job is stopping, e.g. received SIGTERM but not yet exited.
+  JOB_STATE_STOPPED = 4; // Program specified by job has exited with an exit code.
+  JOB_STATE_FAILED = 5; // A failure as a result of an error returned from the service, e.g. server unable to allocate resources.
 }
 ```
 
@@ -366,7 +366,7 @@ Cgroups v2 will be used to impose CPU, memory, and disk I/O resource limits on j
 
 The cgroup will be created before the process starts, using the naming pattern: `jobworker-{UUID}`, and limits configured before the process is placed in it. The cgroup will be automatically cleaned up after the process exits.
 
-The cgroup file descriptor will be passed to the process in `exec.Cmd` via the `SysProcAttr.CgroupFD` attribute to ensure the process is atomically placed in the cgroup during fork/exec, which will guarantee no opportunity for the process to violate the configured limits and prevent any child processes from escaping.
+The cgroup file descriptor will be passed to the process in `exec.Cmd` via the `SysProcAttr.CgroupFD` attribute to ensure the process is atomically placed in the cgroup when the process is exec'd, which will guarantee no opportunity for the process to violate the configured limits and prevent any child processes from escaping.
 
 ##### CPU
 
@@ -422,7 +422,7 @@ Output streaming will use a fan-out pattern to enable multiple clients to read o
 
 #### Cleaning up
 1. When the `Job` process exits, the `io.PipeWriter` end of the pipe will close.
-1. The `OutputManager` will detect an `io.EOF` and exits its read loop.
+1. The `OutputManager` will detect an `io.EOF` and exit its read loop.
 1. Once subscribers have read all available data, they will read the `io.EOF` and exit.
 
 Each client will be reading from the same underlying buffer in its own goroutine. This approach will enable performant fan-out (zero copies of the buffer) without slow clients blocking others, since they will only hold the lock long enough to read the bytes from the buffer.
