@@ -248,11 +248,6 @@ A `Job` can be in one of the following states:
  - `STOPPED` - Program specified by job has exited with an exit code.
  - `FAILED` - A failure as a result of an error returned from the service, e.g. server unable to allocate resources.
 
-The `exec.Cmd` for the `Job` will have the following `SysProcAttr` attributes set: 
-
-- `Setpgid` - Set to `true` to create a new process group so that signals can be sent to the entire process group using a negative PID, for example to terminate all processes in the group.
-- `CgroupFD` - Passed the file descriptor for the [cgroup](#Process-resource-limits) in which to put the process, enables atomic addition of process to cgroup.
-
 #### `JobManager`
 
 The `JobManager` will be responsible for coordinating `Job` and `OutputManager`. The API for `JobManager` will look something like: 
@@ -450,7 +445,50 @@ The following output streaming scenarios will be tested.
 
 ## Process execution lifecycle
 
-TODO: Process execution lifecycle diagram (fork/exec → cgroup placement → monitoring → process group termination → cleanup)
+### Creating a job
+
+1. The `NewJob` function is called, which will create a new job and configure an `exec.Cmd` to execute the specified program and arguments.
+1. The `exec.Cmd` will have the following `SysProcAttr.Setpgid` attribute set to `true` to place the process in its own process group, allowing signals to be sent to the parent and all children using a negative PID.
+1. An `io.Pipe()` will be created, with the `io.Writer` end being assigned to both the stdout and stderr of the `exec.Cmd` to combine them. The `io.Reader` end will be stored for output streaming.
+1. The job is set to `CREATED` state.
+
+### Starting a job
+
+1. The `job.Start()` method is called.
+1. The current state is checked to be `CREATED`. If not, an error is returned.
+1. The job is set to `STARTING` state.
+1. A cgroup named `jobworker-{UUID}` is created at `/sys/fs/cgroup/`.
+1. Resource limits will be written to `cpu.max`, `memory.max`, `io.max`.
+1. The file descriptor for the cgroup is added to the `exec.Cmd` on the `SysProcAttr.CgroupFD` attribute and the `SysProcAttr.UseCgroupFD` attribute is set to `true`.
+1. The `exec.Cmd` process is executed.
+    - It's placed in its own process group.
+    - It's placed in the cgroup.
+1. A background goroutine will be spawned to call `process.Wait()` and monitor for process exit.
+1. The job is set to `STARTED` state.
+
+### Running job
+
+1. The background goroutine blocks on the `process.Wait()` until the process exits.
+1. While the process is running, it's writing stdout/stderr into the pipe. The `OutputManager` reads from the pipe and buffers data for clients.
+1. The kernel enforces cgroup limits throughout the lifetime of the process.
+1. Any child processes inherit the cgroup membership and process group.
+
+### Stopping a job
+
+1. The `job.Stop()` method is called.
+1. The current state is checked to be `STARTED`. If not, an error is returned.
+1. The job is set to `STOPPING` state.
+1. A `SIGTERM` signal will be sent to the negative PID to initiate graceful shutdown of the process group with a context timeout.
+    - If the timeout expires, a `SIGKILL` signal will be sent to force termination.
+1. The job is set to `STOPPED` state.
+
+### Cleaning up
+
+1. Process exits.
+1. The cgroup is removed.
+1. The `io.Writer` end of the pipe is closed, signaling `io.EOF` to the `OutputManager`.
+1. The jobs `Done()` channel is closed, signaling completion.
+1. The `OutputManager` (on receiving `io.EOF`), stops reading and broadcasts to all subscribers, then its `Done()` channel is closed.
 
 ### Testing
 
