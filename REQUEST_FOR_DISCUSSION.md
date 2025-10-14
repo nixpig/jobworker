@@ -201,8 +201,7 @@ $ jobserver serve \
 	--debug=false \
 	--cpu-max-percent=100 \
 	--memory-max-mb=512 \
-	--io-max-mbps=0 \
-	--output-buffer-max-mb=10
+	--io-max-mbps=0
 ```
 
 ### Library
