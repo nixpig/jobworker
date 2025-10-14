@@ -454,7 +454,6 @@ The following output streaming scenarios will be tested.
 
 1. The `job.Start()` method is called.
 1. The current state is checked to be `CREATED`. If not, an error is returned.
-1. The job is set to `STARTING` state.
 1. A cgroup named `jobworker-{UUID}` is created at `/sys/fs/cgroup/`.
 1. Resource limits will be written to `cpu.max`, `memory.max`, `io.max`.
 1. The file descriptor for the cgroup is added to the `exec.Cmd` on the `SysProcAttr.CgroupFD` attribute and the `SysProcAttr.UseCgroupFD` attribute is set to `true`.
