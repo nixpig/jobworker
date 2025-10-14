@@ -185,7 +185,6 @@ The `jobserver` CLI command will support the following configuration arguments, 
 | `cpu-max-percent` | int | Per job CPU limit percentage (0-100, 0=unlimited) | `100` |
 | `memory-max-mb` | int | Per job memory limit in MB (0=unlimited) | `512` |
 | `io-max-mbps` | int | Per job I/O limit in MB/sec (0=unlimited) | `0` |
-| `output-buffer-max-mb` | int | Maximum output buffer size per job in MB | `10` |
 
 ##### Example
 
