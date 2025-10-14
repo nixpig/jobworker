@@ -92,7 +92,7 @@ STOPPED 1
 
 #### Stream job output
 
-`jobctl stream <UUID>` streams the combined stdout/stderr of the job specified by the UUID.
+`jobctl stream <UUID>` streams the combined stdout/stderr of the job specified by the UUID until the job exits.
 
 ```bash
 $ jobctl stream fd7bdba1-3bfe-4af9-8e76-22fc4f22de26
@@ -226,9 +226,9 @@ func NewJob(id, program string, args []string) (*Job, error)
 
 // ID gets the ID of the Job.
 func (j *Job) ID() string
-// Start starts the Job.
+// Start starts the Job. Trying to start a job that is not in CREATED state returns an error.
 func (j *Job) Start() error
-// Stop stops the Job.
+// Stop stops the Job. Trying to stop a job that is not in STARTED state returns an error.
 func (j *Job) Stop() error
 // State returns the state of the job
 func (j *Job) State() string
@@ -388,7 +388,14 @@ The entry will be added like: `{major}:{minor} rbps={limit_in_bytes} wbps={limit
 
 ### Testing
 
-TODO: HOW WILL CGROUPS BE TESTED
+The following cgroups scenarios will be tested.
+
+- Cgroups are created and removed successfully.
+- Requested CPU, memory, I/O limits are written correctly.
+- Processes placed in a cgroup respect the configured limits.
+- Processes are placed in cgroups atomically.
+- Child processes inherit cgroup membership.
+- Edge cases: duplicates, non-existent, invalid limits.
 
 ## Output streaming
 
@@ -430,15 +437,37 @@ Each client will be reading from the same underlying buffer in its own goroutine
 The solution depends on unbounded growth of the underlying `[]byte` buffer. For the purposes of this challenge, that's acceptable. In a production system, we could look at segmenting off and writing to disk the historical data and maintaining only the most recent bytes in memory.
 
 ### Testing
-TODO: HOW WILL OUTPUT STREAMING BE TESTED
+
+The following output streaming scenarios will be tested.
+
+- Single subscriber can read data.
+- Multiple subscribers can read data.
+- Data read by multiple subscribers matches.
+- Late subscribers pick up historical data.
+- Unsubscribe cleans up resources.
+- Cancellation stops gracefully and cleans up.
+- Edge cases: empty output, large output, rapid writes.
 
 ## Process execution lifecycle
 
 TODO: Process execution lifecycle diagram (fork/exec → cgroup placement → monitoring → process group termination → cleanup)
 
-TODO: HOW WILL PROCESS EXECUTION BE TESTED
+### Testing
+
+The following process execution lifecycle scenarios will be tested.
+
+- Basic operations work correctly: start, stop, query, stream.
+- Invalid state transitions are prevented.
+- Exit codes and states are handled correctly.
+- Signals are correctly handled, e.g. SIGTERM then timeout to SIGKILL.
+- Process stdout/stderr combined and written; close on process exit.
+- Process is started in cgroup with limits applied correctly.
+- Safe concurrent access to Job methods, e.g. calling the same method multiple times.
+- Edge cases: non-existent programs, crashes, permission errors.
 
 ## Trade-offs
-TODO: what notable trade-offs have been made and why?
 
+## Notes
+- CLIs will use `github.com/spf13/cobra-cli`.
+- UUIDs will be generated using `github.com/google/uuid`.
 
