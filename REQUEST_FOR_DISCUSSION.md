@@ -500,8 +500,6 @@ The following process execution lifecycle scenarios will be tested.
 - Safe concurrent access to Job methods, e.g. calling the same method multiple times.
 - Edge cases: non-existent programs, crashes, permission errors.
 
-## Trade-offs
-
 ## Notes
 - CLIs will use `github.com/spf13/cobra-cli`.
 - UUIDs will be generated using `github.com/google/uuid`.
