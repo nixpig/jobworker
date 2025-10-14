@@ -208,7 +208,7 @@ $ jobserver serve \
 
 ### Library
 
-The `jobmanager` library will provide the core functionality for managing the [lifecycle of Linux processes](#Process_execution_lifecycle) as 'jobs'.
+The `jobmanager` library will provide the core functionality for managing the [lifecycle of Linux processes](#Process-execution-lifecycle) as 'jobs'.
 
 #### `Job`
 
@@ -251,7 +251,7 @@ A `Job` can be in one of the following states:
 The `exec.Cmd` for the `Job` will have the following `SysProcAttr` attributes set: 
 
 - `Setpgid` - Set to `true` to create a new process group so that signals can be sent to the entire process group using a negative PID, for example to terminate all processes in the group.
-- `CgroupFD` - Passed the file descriptor for the [cgroup](#Process_resource_limits) in which to put the process, enables atomic addition of process to cgroup.
+- `CgroupFD` - Passed the file descriptor for the [cgroup](#Process-resource-limits) in which to put the process, enables atomic addition of process to cgroup.
 
 #### `JobManager`
 
