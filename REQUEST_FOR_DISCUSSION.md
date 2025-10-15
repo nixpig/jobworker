@@ -290,7 +290,17 @@ func (om *OutputManager) Subscribe(id string) io.Reader
 func (om *OutputManager) Unsubscribe(id string) 
 // Write writes a job's output into the internal shared buffer.
 func (om *OutputManager) Write(p []byte) (n int, err error)
-// Done returns a recv-only channel that signals when done.
+// Done returns a recv-only channel that signals when done. 
+// Used to differentiate between 'reached the end but more data coming' and 'reached the end and that is it'.
+// For example: 
+// if subscriber.position >= len(om.buffer) {
+//	select {
+//	case <-om.Done():
+//		return 0, io.EOF // no more data coming, we're done
+//	default:
+//		return 0, nil // need to wait for more data
+//	}
+// }
 func (om *OutputManager) Done() <-chan struct{}
 // Stop terminates further subscriptions and reads, waiting for remaining clients to finish reading.
 func (om *OutputManager) Stop()
