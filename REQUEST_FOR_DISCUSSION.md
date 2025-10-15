@@ -35,7 +35,7 @@ All CLI commands will support the following configuration arguments, with hardco
 | Argument | Type | Description | Default |
 |-|-|-|-|
 | `server-hostname` | string | Hostname of the server | `localhost` |
-| `server-port` | int | Port on server | `8080` |
+| `server-port` | int | Port on server | `8443` |
 | `client-cert` | string | Path to client certificate | `certs/client.crt` |
 | `client-key` | string | Path to client private key | `certs/client.key` |
 | `ca-cert` | string | Path to CA certificate | `certs/ca.crt` |
@@ -49,7 +49,7 @@ $ jobctl start tail -f server.log
 # Custom configuration
 $ jobctl start \
 	--server-hostname=localhost \
-	--server-port=8080 \
+	--server-port=8443 \
 	--client-cert=certs/client.crt \
 	--client-key=certs/client.key \
 	--ca-cert=certs/ca.crt \
@@ -177,14 +177,11 @@ The `jobserver` CLI command will support the following configuration arguments, 
 
 | Argument | Type | Description | Default |
 |-|-|-|-|
-| `port` | int | gRPC server port | `8080` |
+| `port` | int | gRPC server port | `8443` |
 | `server-cert` | string | Path to server certificate | `certs/server.crt` |
 | `server-key` | string | Path to server private key | `certs/server.key` |
 | `ca-cert` | string | Path to CA certificate | `certs/ca.crt` |
 | `debug` | boolean | Enable debug logs | `false` |
-| `cpu-max-percent` | int | Per job CPU limit percentage (0-100, 0=unlimited) | `100` |
-| `memory-max-mb` | int | Per job memory limit in MB (0=unlimited) | `512` |
-| `io-max-mbps` | int | Per job I/O limit in MB/sec (0=unlimited) | `0` |
 
 ##### Example
 
@@ -194,14 +191,11 @@ $ jobserver serve
 
 # Custom configuration
 $ jobserver serve \
-	--port=8080 \
+	--port=8443 \
 	--server-cert=certs/server.crt \
 	--server-key=certs/server.key \
 	--ca-cert=certs/ca.crt \
-	--debug=false \
-	--cpu-max-percent=100 \
-	--memory-max-mb=512 \
-	--io-max-mbps=0
+	--debug=false
 ```
 
 ### Library
@@ -215,8 +209,13 @@ The `jobmanager` library will provide the core functionality for managing the [l
 ```go
 // Job is a concurrency-safe abstraction around a process executed using exec.Cmd.
 type Job struct {
-  cmd *exec.Cmd
-  mu sync.RWMutex
+	id         string
+	state      string
+	exitCode   int
+	output     io.Reader
+
+	cmd *exec.Cmd
+	mu  sync.RWMutex
 }
 
 // NewJob creates a new job with the given id that will execute the program with the provided args.
@@ -255,7 +254,7 @@ The `JobManager` will be responsible for coordinating `Job` and `OutputManager`.
 // It ensures safe concurrent access to a collection of jobs.
 type JobManager struct {
   jobs map[string]*Job
-  mu sync.RWMutex
+  mu   sync.Mutex
 }
 
 // RunJob creates a UUID and creates a new Job with the provided program, args, and created UUID.
@@ -268,7 +267,8 @@ func (jm *JobManager) QueryJob(id string) (Status, error)
 // GetJob gets a reference to the job with the given id.
 func (jm *JobManager) GetJob(id string) (*Job, error)
 // StreamJobOutput returns an io.Reader with output from the job with the given id.
-func (jm *JobManager) StreamJobOutput(id string) (io.Reader, error)
+// The context can be used by the caller to cancel the stream and JobManager will clean up.
+func (jm *JobManager) StreamJobOutput(ctx context.Context, id string) (io.Reader, error)
 ```
 
 #### `OutputManager`
@@ -288,8 +288,8 @@ type OutputManager struct {
 func (om *OutputManager) Subscribe(id string) io.Reader
 // Unsubscribe unsubscribes a client from a job's output.
 func (om *OutputManager) Unsubscribe(id string) 
-// Read reads a job's output into the internal shared buffer.
-func (om *OutputManager) Read(p []byte) (n int, err error)
+// Write writes a job's output into the internal shared buffer.
+func (om *OutputManager) Write(p []byte) (n int, err error)
 // Done returns a recv-only channel that signals when done.
 func (om *OutputManager) Done() <-chan struct{}
 // Stop terminates further subscriptions and reads, waiting for remaining clients to finish reading.
@@ -317,7 +317,7 @@ To keep things simple, both the client and server will use the same certificate 
 
 ### Authorisation
 
-A simple role-based authorisation scheme will be implemented and will use the client certificate CN (Common Name) to identify the client.
+A simple role-based authorisation scheme will be implemented and will use the client certificate CN (Common Name) to identify the client's role.
 
 Each operation supported by the service will have an associated permission.
 
@@ -335,15 +335,12 @@ Two roles be be supported.
 | **Operator** | `job:start`, `job:stop`, `job:query`, `job:stream` |
 | **Viewer** | `job:query`, `job:stream` |
 
+The role of the client is specified by the Common Name in the client certificate, e.g.
 
-Clients will be assigned a role, which will be hardcoded, e.g.
-
-```go
-clients := map[string]Role{
-	"alice": RoleOperator,
-	"bob":   RoleViewer,
-}
 ```
+Subject: CN=operator
+```
+
 
 Authorisation will be enforced using gRPC middleware interceptors that run before the request handlers, which will: 
 
@@ -363,21 +360,21 @@ The cgroup file descriptor will be passed to the process in `exec.Cmd` via the `
 
 ##### CPU
 
-`cpu.max` will be used to limit CPU time. The period will be fixed at 100,000 and the quota will be calculated from the requested percentage limit by `(percent * period) / 100`.
+`cpu.max` will be used to limit CPU time. The quota and period will hardcoded as `50000` and `100000`, respectively, amounting to 50%.
 
-The entry will be added like: `{quota} {period}` (in microseconds), for example: `50000 100000` (50%).
+The entry will be added like: `50000 100000`.
 
 ##### Memory
 
-`memory.max` will be used to set a hard limit on memory usage.
+`memory.max` will be used to set a hard limit on memory usage. The limit will be hardcoded as `536870912` (512 MB).
 
-The entry will be added like: `{limit_in_bytes}`, for example: `536870912` (512 MB).
+The entry will be added like: `536870912`.
 
 ##### Disk I/O
 
-`io.max` will be used to limit disk I/O for the 'root' device. The device will be determined by reading `/proc/self/mountinfo` and finding the device mounted at `/`. To keep things simple, the same value will be used for reads and writes.
+`io.max` will be used to limit disk I/O for the 'root' device. The device will be determined by reading `/proc/self/mountinfo` and finding the device mounted at `/`. To keep things simple, the same value will be used for reads and writes. The limit will be hardcoded as `10485760` (10 MB/s).
 
-The entry will be added like: `{major}:{minor} rbps={limit_in_bytes} wbps={limit_in_bytes}`, for example `8:0 rbps=10485760 wbps=10485760` (10 MB/s).
+The entry will be added like: `8:0 rbps=10485760 wbps=10485760` (10 MB/s).
 
 ### Testing
 
@@ -446,7 +443,6 @@ The following output streaming scenarios will be tested.
 ### Creating a job
 
 1. The `NewJob` function is called, which will create a new job and configure an `exec.Cmd` to execute the specified program and arguments.
-1. The `exec.Cmd` will have the following `SysProcAttr.Setpgid` attribute set to `true` to place the process in its own process group, allowing signals to be sent to the parent and all children using a negative PID.
 1. An `io.Pipe()` will be created, with the `io.Writer` end being assigned to both the stdout and stderr of the `exec.Cmd` to combine them. The `io.Reader` end will be stored for output streaming.
 1. The job is set to `CREATED` state.
 
@@ -475,8 +471,7 @@ The following output streaming scenarios will be tested.
 1. The `job.Stop()` method is called.
 1. The current state is checked to be `STARTED`. If not, an error is returned.
 1. The job is set to `STOPPING` state.
-1. A `SIGTERM` signal will be sent to the negative PID to initiate graceful shutdown of the process group with a context timeout.
-    - If the timeout expires, a `SIGKILL` signal will be sent to force termination.
+1. The cgroup will be killed by writing `1` to `cgroup.kill`, in turn signaling `SIGKILL` to all processes in the cgroup.
 1. The job is set to `STOPPED` state.
 
 ### Cleaning up
