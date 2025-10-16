@@ -74,7 +74,7 @@ fd7bdba1-3bfe-4af9-8e76-22fc4f22de26
 
 #### Get job status
 
-`jobctl status <UUID>` gets the state and exit code (if available) of the job specified by the UUID.
+`jobctl status <UUID>` gets the state, exit code, and whether the job was interrupted of the job specified by the UUID.
 
 ```bash
 # Job that hasn't exited
@@ -88,6 +88,10 @@ STOPPED 0
 # Job that completed with non-zero exit code
 $ jobctl status fd7bdba1-3bfe-4af9-8e76-22fc4f22de26
 STOPPED 1
+
+# Job that was stopped by a user
+$ jobctl status fd7bdba1-3bfe-4af9-8e76-22fc4f22de26
+STOPPED -1 INTERRUPTED
 ```
 
 #### Stream job output
@@ -210,10 +214,11 @@ The `jobmanager` library will provide the core functionality for managing the [l
 ```go
 // Job is a concurrency-safe abstraction around a process executed using exec.Cmd.
 type Job struct {
-	id         string
-	state      string
-	exitCode   int
-	output     io.Reader
+	id          string
+	state       string
+	exitCode    int
+	interrupted bool
+	output      io.Reader
 
 	cmd *exec.Cmd
 	mu  sync.RWMutex
@@ -232,6 +237,8 @@ func (j *Job) Stop() error
 func (j *Job) State() string
 // ExitCode returns the exit code of the process. In the case no exit code is available, -1 will be returned.
 func (j *Job) ExitCode() int
+// Interrupted returns a boolean indicating if the process execution was interrupted, e.g. by user-initiated 'stop'.
+func (j *Job) Interrupted() bool
 // Output returns a io.Reader for the process output (combined stdout/stderr).
 func (j *Job) Output() io.Reader
 // Done returns a recv-only channel that is used to signal completion of the job.
@@ -243,7 +250,7 @@ A `Job` can be in one of the following states:
  - `CREATED` - Job configured and resources allocated successfully.
  - `STARTED` - Program specified by job has started.
  - `STOPPING` - Program specified by job is stopping, e.g. received SIGTERM but not yet exited.
- - `STOPPED` - Program specified by job has exited with an exit code.
+ - `STOPPED` - Program specified by job has exited.
  - `FAILED` - A failure as a result of an error returned from the service, e.g. server unable to allocate resources.
 
 #### `JobManager`
@@ -263,7 +270,7 @@ type JobManager struct {
 func (jm *JobManager) RunJob(program string, args []string) (*Job, error)
 // StopJob calls the Stop method on the job with the given id.
 func (jm *JobManager) StopJob(id string) error
-// QueryJob calls the State and ExitCode methods on the job with the given id and combines their output into a Status.
+// QueryJob calls the State, ExitCode and Interrupted methods on the job with the given id and combines their output into a Status.
 func (jm *JobManager) QueryJob(id string) (Status, error)
 // GetJob gets a reference to the job with the given id.
 func (jm *JobManager) GetJob(id string) (*Job, error)
