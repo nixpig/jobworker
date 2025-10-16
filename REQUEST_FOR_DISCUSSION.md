@@ -403,12 +403,10 @@ Output streaming will use a fan-out pattern to enable multiple clients to read o
 
 #### Setting up
 1. `JobManager` creates a new `Job`.
-  1. When a new `Job` is created, it will create a new `io.Pipe()`.
-  1. The `io.PipeWriter` end of the pipe will be assigned to both the `Stdout` and `Stderr` of the `exec.Cmd`, combining them into a single stream.
-  1. The `io.Reader` end of the pipe will be assigned to a field of the `Job` and returned when calling the `Output()` method.
 1. `JobManager` creates a new `OutputManager`.
-  1. When a new `OutputManager` is created, it will be passed the `io.Reader` end of the pipe from the `Job`. The `OutputManager` will start a background goroutine, in which it will:
-     1. Read data from the pipe in chunks. 
+  1. When a new `OutputManager` is created, it will be passed the stdout and stderr pipes from `Job` process (e.g. `cmd.StdoutPipe()` `cmd.StderrPipe()`).
+  1. The `OutputManager` will start a background goroutine, in which it will:
+     1. Read data from the pipes in chunks. 
      1. Append the data to a shared `[]byte` buffer.
      1. Call `cond.Broadcast()` on a `sync.Cond` condition variable to notify any client subscribers.
 
@@ -428,7 +426,7 @@ Output streaming will use a fan-out pattern to enable multiple clients to read o
 1. When the background goroutine appends new data to the shared buffer, it calls `cond.Broadcast()`, notifying any waiting subscribers so they can read the new data.
 
 #### Cleaning up
-1. When the `Job` process exits, the `io.PipeWriter` end of the pipe will close.
+1. When the `Job` process exits, the stdout and stderr pipes will close.
 1. The `OutputManager` will detect an `io.EOF` and exit its read loop.
 1. Once subscribers have read all available data, they will read the `io.EOF` and exit.
 
@@ -453,7 +451,6 @@ The following output streaming scenarios will be tested.
 ### Creating a job
 
 1. The `NewJob` function is called, which will create a new job and configure an `exec.Cmd` to execute the specified program and arguments.
-1. An `io.Pipe()` will be created, with the `io.Writer` end being assigned to both the stdout and stderr of the `exec.Cmd` to combine them. The `io.Reader` end will be stored for output streaming.
 1. The job is set to `CREATED` state.
 
 ### Starting a job
@@ -472,7 +469,7 @@ The following output streaming scenarios will be tested.
 ### Running job
 
 1. The background goroutine blocks on the `process.Wait()` until the process exits.
-1. While the process is running, it's writing stdout/stderr into the pipe. The `OutputManager` reads from the pipe and buffers data for clients.
+1. While the process is running, the `OutputManager` reads from the stdout and stderr pipes and buffers data for clients.
 1. The kernel enforces cgroup limits throughout the lifetime of the process.
 1. Any child processes inherit the cgroup membership and process group.
 
@@ -487,8 +484,8 @@ The following output streaming scenarios will be tested.
 ### Cleaning up
 
 1. Process exits.
+1. The stdout and stderr pipes are closed, signaling `io.EOF` to the `OutputManager`.
 1. The cgroup is removed.
-1. The `io.Writer` end of the pipe is closed, signaling `io.EOF` to the `OutputManager`.
 1. The jobs `Done()` channel is closed, signaling completion.
 1. The `OutputManager` (on receiving `io.EOF`), stops reading and broadcasts to all subscribers, then its `Done()` channel is closed.
 
