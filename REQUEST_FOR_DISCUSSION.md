@@ -408,10 +408,11 @@ Output streaming will use a fan-out pattern to enable multiple clients to read o
 
 #### Setting up
 1. `JobManager` creates a new `Job`.
+  1. When a new `Job` is created, it will create an `os.Pipe()` with the 'write' end assigned to the stdout/stderr of the `exec.Cmd`.
 1. `JobManager` creates a new `OutputManager`.
-  1. When a new `OutputManager` is created, it will be passed the stdout and stderr pipes from `Job` process (e.g. `cmd.StdoutPipe()` `cmd.StderrPipe()`).
+  1. When a new `OutputManager` is created, it will be passed the 'read' end of the `os.Pipe` from `Job` process.
   1. The `OutputManager` will start a background goroutine, in which it will:
-     1. Read data from the pipes in chunks. 
+     1. Read data from the pipe in chunks. 
      1. Append the data to a shared `[]byte` buffer.
      1. Call `cond.Broadcast()` on a `sync.Cond` condition variable to notify any client subscribers.
 
@@ -431,7 +432,7 @@ Output streaming will use a fan-out pattern to enable multiple clients to read o
 1. When the background goroutine appends new data to the shared buffer, it calls `cond.Broadcast()`, notifying any waiting subscribers so they can read the new data.
 
 #### Cleaning up
-1. When the `Job` process exits, the stdout and stderr pipes will close.
+1. When the `Job` process exits, the os.Pipe will be closed.
 1. The `OutputManager` will detect an `io.EOF` and exit its read loop.
 1. Once subscribers have read all available data, they will read the `io.EOF` and exit.
 
