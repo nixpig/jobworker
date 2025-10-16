@@ -335,7 +335,7 @@ To keep things simple, both the client and server will use the same certificate 
 
 ### Authorisation
 
-A simple role-based authorisation scheme will be implemented and will use the client certificate CN (Common Name) to identify the client's role.
+A simple role-based authorisation scheme will be implemented and will use the client certificate OU (Organizational Unit) to identify the client's role.
 
 Each operation supported by the service will have an associated permission.
 
