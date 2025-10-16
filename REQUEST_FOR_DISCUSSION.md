@@ -145,6 +145,7 @@ message QueryJobRequest {
 message QueryJobResponse { 
   JobState state = 1; // State of the job.
   int32 exit_code = 2; // Exit code of the job.
+  bool interrupted = 3; // Set to `true` stopped by user.
 }
 
 message StreamJobOutputRequest {
@@ -345,12 +346,9 @@ Two roles be be supported.
 | **Operator** | `job:start`, `job:stop`, `job:query`, `job:stream` |
 | **Viewer** | `job:query`, `job:stream` |
 
-The role of the client is specified by the Common Name in the client certificate, e.g.
+The identity of the client is specified by the Common Name in the client certificate.
 
-```
-Subject: CN=operator
-```
-
+The role of the client is specified by the Organizational Unit in the client certificate.
 
 Authorisation will be enforced using gRPC middleware interceptors that run before the request handlers, which will: 
 
@@ -496,7 +494,7 @@ The following process execution lifecycle scenarios will be tested.
 - Basic operations work correctly: start, stop, query, stream.
 - Invalid state transitions are prevented.
 - Exit codes and states are handled correctly.
-- Signals are correctly handled, e.g. SIGTERM then timeout to SIGKILL.
+- Signals are correctly handled.
 - Process stdout/stderr combined and written; close on process exit.
 - Process is started in cgroup with limits applied correctly.
 - Safe concurrent access to Job methods, e.g. calling the same method multiple times.
