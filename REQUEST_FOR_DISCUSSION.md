@@ -299,7 +299,7 @@ func (om *OutputManager) Unsubscribe(id string)
 // Write writes a job's output into the internal shared buffer.
 func (om *OutputManager) Write(p []byte) (n int, err error)
 // Done returns a recv-only channel that signals when done. 
-// Used to differentiate between 'reached the end but more data coming' and 'reached the end and that is it'.
+// Used to by readers to differentiate between 'reached the end but more data coming' and 'reached the end and that is it'.
 // For example: 
 // if subscriber.position >= len(om.buffer) {
 //	select {
