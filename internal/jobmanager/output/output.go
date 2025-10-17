@@ -44,7 +44,7 @@ func NewStreamer(source io.ReadCloser) *Streamer {
 		done:   make(chan struct{}),
 	}
 
-	s.cond = sync.NewCond(&s.mu)
+	s.cond.L = &s.mu
 
 	// TODO: A nicer API might be to return a Streamer and give the consumer the
 	// responsibility of initiating processing and have them decide whether they
