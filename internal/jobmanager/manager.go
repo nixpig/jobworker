@@ -94,11 +94,7 @@ func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
 // the Manager.
 func (m *Manager) Shutdown() {
 	m.mu.RLock()
-	jobs := make([]*Job, 0, len(m.jobs))
-
-	for _, job := range m.jobs {
-		jobs = append(jobs, job)
-	}
+	jobs := slices.Collect(maps.Values(m.jobs))
 	m.mu.RUnlock()
 
 	var wg sync.WaitGroup
