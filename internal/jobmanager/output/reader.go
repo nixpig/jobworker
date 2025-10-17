@@ -32,10 +32,7 @@ func (r *reader) Read(p []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	availableData := len(r.s.buffer) - r.position
-	amountToCopy := min(availableData, len(p))
-
-	n = copy(p, r.s.buffer[r.position:r.position+amountToCopy])
+	n = copy(p, r.s.buffer[r.position:])
 
 	r.position += n
 
