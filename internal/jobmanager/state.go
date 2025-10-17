@@ -2,42 +2,42 @@ package jobmanager
 
 import "sync/atomic"
 
+// JobState represents the state of a Job throughout its lifecycle.
 type JobState int
 
 const (
-	// JobStateUnknown indicates the state of the job is unknown. It's used as
-	// the zero value for functions that return a (possibly absent) JobState.
+	// JobStateUnknown indicates the state of the Job is unknown.
 	JobStateUnknown JobState = iota
 
-	// JobStateCreated indicates the job has been configured and resources
-	// allocated successfully. The job can be started.
+	// JobStateCreated indicates the Job has been configured and resources
+	// allocated successfully. The Job can be started.
 	JobStateCreated
 
-	// JobStateStarting indicates the job is in the process of starting, e.g.
+	// JobStateStarting indicates the Job is in the process of starting, e.g.
 	// Start() called but the underlying process has not yet started.
 	JobStateStarting
 
-	// JobStateStarted indicates the program specified by the job has started.
-	// The job can be stopped.
+	// JobStateStarted indicates the process managed by the Job has started.
+	// The Job can be stopped.
 	JobStateStarted
 
-	// JobStateStopping indicates the program specified by the job in in the
+	// JobStateStopping indicates the process managed by the Job is in the
 	// process of stopping, e.g. received SIGTERM but not yet exited.
 	JobStateStopping
 
-	// JobStateStopped indicates the program specified by the job has exited with
+	// JobStateStopped indicates the process managed by the Job has exited with
 	// an exit code.
 	JobStateStopped
 
-	// JobStateFailed indicates the job has failed for some reason that is not
-	// due to the underlying program being run, e.g. the server failed to
+	// JobStateFailed indicates the Job has failed for a reason that is not
+	// due to the underlying process being run, e.g. the server failed to
 	// allocate resources.
 	JobStateFailed
 )
 
 // NOTE: This slice needs to be kept in sync with any changes to the JobState
-// values. Ideally, we'd only ever be 'adding' more states to maintain a
-// consistent API.
+// values. Ideally, we'd only ever be 'appending' states to maintain a
+// consistent API, so wouldn't expect this to break for existing JobStates.
 var jobStates = []string{
 	"Unknown",
 	"Created",
@@ -48,8 +48,8 @@ var jobStates = []string{
 	"Failed",
 }
 
-// String implements the Stringer interface for JobState and returns a string
-// representation of the JobState by using the int value to index into a slice.
+// String implements the Stringer interface and returns the name of the
+// JobState.
 func (s JobState) String() string {
 	if int(s) < 0 || int(s) >= len(jobStates) {
 		return jobStates[0]
@@ -58,11 +58,9 @@ func (s JobState) String() string {
 	return jobStates[s]
 }
 
-// AtomicJobState is a wrapper around an atomic.Int32 to provide atomic
-// operations on a JobState.
+// AtomicJobState provides atomic operations on JobState.
 //  1. Simplifies validating state transitions with CompareAndSwap.
-//  2. Reduces (maybe removes?) the
-//     need for mutexes and explicit handling of locking on a Job.
+//  2. Reduces the need for explicit lock management on a Job.
 type AtomicJobState struct {
 	v atomic.Int32
 }

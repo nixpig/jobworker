@@ -7,9 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Manager is responsible for creating and tracking jobs, managing the
-// lifecycle of jobs, and coordinating the output of jobs for streaming.
-// It ensures safe concurrent access to a collection of jobs.
+// Manager is responsible for creating and managing Jobs.
 type Manager struct {
 	// NOTE: The jobs map will grow unbounded with no way to remove items. Since
 	// the stated assumption is 'everything will fit in memory', that's fine.
@@ -24,17 +22,15 @@ type Manager struct {
 	mu sync.RWMutex
 }
 
-// NewManager creates a job manager in a state that is ready to accept new
-// jobs to run.
+// NewManager creates a new Manager ready to run Jobs.
 func NewManager() *Manager {
 	return &Manager{
 		jobs: make(map[string]*Job),
 	}
 }
 
-// RunJob creates a UUID and creates a new Job with the provided program, args,
-// and created UUID. It then adds the job to the collection in the Manager
-// and starts the job.
+// RunJob creates and starts a new Job with the given program and args. It
+// returns the Job's unique ID.
 func (m *Manager) RunJob(
 	program string,
 	args []string,
@@ -57,9 +53,10 @@ func (m *Manager) RunJob(
 	return id, nil
 }
 
-// StopJob calls the Stop method on the job with the given id.
+// StopJob stops the Job with the given id or returns ErrJobNotFound if it
+// doesn't exist.
 func (m *Manager) StopJob(id string) error {
-	job, err := m.getJob(id)
+	job, err := m.GetJob(id)
 	if err != nil {
 		return err
 	}
@@ -67,9 +64,10 @@ func (m *Manager) StopJob(id string) error {
 	return job.Stop()
 }
 
-// QueryJob gets the Status of the job.
+// QueryJob returns the status of the Job with the given id or ErrJobNotFound
+// if it doesn't exist.
 func (m *Manager) QueryJob(id string) (*JobStatus, error) {
-	job, err := m.getJob(id)
+	job, err := m.GetJob(id)
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +75,14 @@ func (m *Manager) QueryJob(id string) (*JobStatus, error) {
 	return job.Status(), nil
 }
 
-// StreamJobOutput returns an io.ReadCloser with output from the job with the
-// given id. Call Close on the io.ReadCloser to terminate the stream and clean
-// up.
+// StreamJobOutput returns an io.ReadCloser of output from the Job with the
+// given id or ErrJobNotFound if it doesn't exist.
+//
+// Read will return all output since the Job started and block waiting for new
+// output.
+// Close unsubscribes from the output stream.
 func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
-	job, err := m.getJob(id)
+	job, err := m.GetJob(id)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +90,8 @@ func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
 	return job.StreamOutput(), nil
 }
 
+// Shutdown makes a 'best effort' attempt to stop any running Jobs managed by
+// the Manager.
 func (m *Manager) Shutdown() {
 	m.mu.RLock()
 	jobs := make([]*Job, 0, len(m.jobs))
@@ -101,12 +104,12 @@ func (m *Manager) Shutdown() {
 	var wg sync.WaitGroup
 
 	for _, job := range jobs {
-		state := job.State()
-		if state == JobStateStarted || state == JobStateStarting {
+		if job.State() == JobStateStarted {
 			wg.Go(func() {
 				if err := job.Stop(); err != nil {
-					// NOTE: In the context of a Shutdown, treating Stop as a 'best
-					// effort' and ignoring any errors.
+					// NOTE: In the context of a Shutdown where we're not attempting
+					// graceful shutdown (i.e. we're just going to SIGKILL), treating
+					// Stop as a 'best effort' and ignoring any errors.
 
 					// TODO: If observability was in scope, we could bubble these errors,
 					// log them, and capture relevent metrics.
@@ -118,7 +121,9 @@ func (m *Manager) Shutdown() {
 	wg.Wait()
 }
 
-func (m *Manager) getJob(id string) (*Job, error) {
+// GetJob returns the Job with the given id or ErrJobNotFound if it doesn't
+// exist.
+func (m *Manager) GetJob(id string) (*Job, error) {
 	m.mu.RLock()
 	job, exists := m.jobs[id]
 	m.mu.RUnlock()

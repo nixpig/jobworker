@@ -11,7 +11,9 @@ import (
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
 
-func TestOutputManager(t *testing.T) {
+func TestOutputStreamer(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Test basic scenarios", func(t *testing.T) {
 		t.Parallel()
 
@@ -50,12 +52,14 @@ func TestOutputManager(t *testing.T) {
 
 		for scenario, config := range scenarios {
 			t.Run(scenario, func(t *testing.T) {
-				om := output.NewManager(
+				t.Parallel()
+
+				s := output.NewStreamer(
 					io.NopCloser(bytes.NewReader(config.payload)),
 				)
 
 				if config.lateSub {
-					<-om.Done()
+					<-s.Done()
 				}
 
 				errCh := make(chan error, config.subs)
@@ -64,7 +68,7 @@ func TestOutputManager(t *testing.T) {
 
 				for range config.subs {
 					wg.Go(func() {
-						sub := om.Subscribe()
+						sub := s.Subscribe()
 						defer sub.Close()
 
 						got, err := io.ReadAll(sub)
@@ -105,7 +109,7 @@ func TestOutputManager(t *testing.T) {
 
 		pr, pw := io.Pipe()
 
-		om := output.NewManager(pr)
+		s := output.NewStreamer(pr)
 
 		errCh := make(chan error, subs)
 
@@ -121,7 +125,7 @@ func TestOutputManager(t *testing.T) {
 
 		for range subs {
 			readerWg.Go(func() {
-				sub := om.Subscribe()
+				sub := s.Subscribe()
 				defer sub.Close()
 
 				got, err := io.ReadAll(sub)
@@ -137,8 +141,6 @@ func TestOutputManager(t *testing.T) {
 						wantData,
 					)
 				}
-
-				sub.Close()
 			})
 		}
 
@@ -154,11 +156,13 @@ func TestOutputManager(t *testing.T) {
 	})
 
 	t.Run("Test read from closed sub", func(t *testing.T) {
+		t.Parallel()
+
 		pr, pw := io.Pipe()
 
-		om := output.NewManager(pr)
+		s := output.NewStreamer(pr)
 
-		sub := om.Subscribe()
+		sub := s.Subscribe()
 
 		// Close immediately.
 		sub.Close()
@@ -180,10 +184,10 @@ func TestOutputManager(t *testing.T) {
 	t.Run("Test concurrent access of single sub", func(t *testing.T) {
 		t.Parallel()
 
-		om := output.NewManager(
+		s := output.NewStreamer(
 			io.NopCloser(strings.NewReader("Hello, world!")),
 		)
-		sub := om.Subscribe()
+		sub := s.Subscribe()
 		defer sub.Close()
 
 		var wg sync.WaitGroup

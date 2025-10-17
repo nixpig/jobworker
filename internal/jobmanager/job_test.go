@@ -41,8 +41,8 @@ func runTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 
 func testJobState(
 	t *testing.T,
-	got jobmanager.JobStatus,
-	want jobmanager.JobStatus,
+	got *jobmanager.JobStatus,
+	want *jobmanager.JobStatus,
 ) {
 	t.Helper()
 
@@ -68,60 +68,44 @@ func testJobState(
 }
 
 func TestJob(t *testing.T) {
+	t.Parallel()
+
 	t.Run("Test initial state", func(t *testing.T) {
+		t.Parallel()
+
 		job := newTestJob(t, "echo", []string{"Hello, world!"})
 
-		testJobState(
-			t,
-			jobmanager.JobStatus{
-				ExitCode:    job.ExitCode(),
-				State:       job.State(),
-				Interrupted: job.Interrupted(),
-			},
-			jobmanager.JobStatus{
-				ExitCode:    -1,
-				State:       jobmanager.JobStateCreated,
-				Interrupted: false,
-			},
-		)
+		testJobState(t, job.Status(), &jobmanager.JobStatus{
+			ExitCode:    -1,
+			State:       jobmanager.JobStateCreated,
+			Interrupted: false,
+		})
 	})
 
 	t.Run("Test run to completion", func(t *testing.T) {
+		t.Parallel()
+
 		job := runTestJob(t, "echo", []string{"Hello, world!"})
 
 		<-job.Done()
 
-		testJobState(
-			t,
-			jobmanager.JobStatus{
-				ExitCode:    job.ExitCode(),
-				State:       job.State(),
-				Interrupted: job.Interrupted(),
-			},
-			jobmanager.JobStatus{
-				ExitCode:    0,
-				State:       jobmanager.JobStateStopped,
-				Interrupted: false,
-			},
-		)
+		testJobState(t, job.Status(), &jobmanager.JobStatus{
+			ExitCode:    0,
+			State:       jobmanager.JobStateStopped,
+			Interrupted: false,
+		})
 	})
 
 	t.Run("Test stop long-running program", func(t *testing.T) {
+		t.Parallel()
+
 		job := runTestJob(t, "sleep", []string{"30"})
 
-		testJobState(
-			t,
-			jobmanager.JobStatus{
-				ExitCode:    job.ExitCode(),
-				State:       job.State(),
-				Interrupted: job.Interrupted(),
-			},
-			jobmanager.JobStatus{
-				ExitCode:    -1,
-				State:       jobmanager.JobStateStarted,
-				Interrupted: false,
-			},
-		)
+		testJobState(t, job.Status(), &jobmanager.JobStatus{
+			ExitCode:    -1,
+			State:       jobmanager.JobStateStarted,
+			Interrupted: false,
+		})
 
 		if err := job.Stop(); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
@@ -129,22 +113,16 @@ func TestJob(t *testing.T) {
 
 		<-job.Done()
 
-		testJobState(
-			t,
-			jobmanager.JobStatus{
-				ExitCode:    job.ExitCode(),
-				State:       job.State(),
-				Interrupted: job.Interrupted(),
-			},
-			jobmanager.JobStatus{
-				ExitCode:    -1,
-				State:       jobmanager.JobStateStopped,
-				Interrupted: true,
-			},
-		)
+		testJobState(t, job.Status(), &jobmanager.JobStatus{
+			ExitCode:    -1,
+			State:       jobmanager.JobStateStopped,
+			Interrupted: true,
+		})
 	})
 
 	t.Run("Test streaming output", func(t *testing.T) {
+		t.Parallel()
+
 		job := runTestJob(
 			t,
 			"/bin/bash",
@@ -172,6 +150,8 @@ func TestJob(t *testing.T) {
 	})
 
 	t.Run("Test non-existent program", func(t *testing.T) {
+		t.Parallel()
+
 		job := newTestJob(t, "non-existent-program", []string{})
 
 		if err := job.Start(); err == nil {
@@ -180,6 +160,8 @@ func TestJob(t *testing.T) {
 	})
 
 	t.Run("Test duplicate operations", func(t *testing.T) {
+		t.Parallel()
+
 		job := newTestJob(t, "sleep", []string{"30"})
 
 		if err := job.Start(); err != nil {

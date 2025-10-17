@@ -10,30 +10,32 @@ import (
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
 
-// Job is an abstraction around a process executed using exec.Cmd that enables
-// safe concurrent streaming of the process' stdout/stderr (combined).
+// Job represents a process executed using exec.Cmd. It provides management of
+// the Job's lifecycle and safe concurrent streaming of the process' combined
+// stdout/stderr.
 type Job struct {
 	id          string
 	state       AtomicJobState
 	interrupted atomic.Bool
 
-	cmd           *exec.Cmd
-	processState  *os.ProcessState
-	outputManager *output.Manager
-	pipeWriter    io.WriteCloser
+	cmd            *exec.Cmd
+	processState   atomic.Pointer[os.ProcessState]
+	outputStreamer *output.Streamer
+	pipeWriter     io.WriteCloser
 
 	done chan struct{}
 }
 
+// JobStatus represents the status of a Job, including its state, exit code,
+// and whether its execution was interrupted.
 type JobStatus struct {
 	State       JobState
 	ExitCode    int
 	Interrupted bool
 }
 
-// NewJob creates a Job with the given id that will execute the program with
-// the provided args. It configures an output.Manager for concurrent streaming
-// of process output.
+// NewJob creates a new Job with the given id, program and args. It configures
+// an output.Streamer for concurrent streaming of process output.
 func NewJob(
 	id string,
 	program string,
@@ -54,11 +56,11 @@ func NewJob(
 	cmd.Stderr = pw
 
 	j := &Job{
-		id:            id,
-		cmd:           cmd,
-		outputManager: output.NewManager(pr),
-		pipeWriter:    pw,
-		done:          make(chan struct{}),
+		id:             id,
+		cmd:            cmd,
+		outputStreamer: output.NewStreamer(pr),
+		pipeWriter:     pw,
+		done:           make(chan struct{}),
 	}
 
 	j.state.Store(JobStateCreated)
@@ -73,7 +75,7 @@ func (j *Job) Start() error {
 		return NewInvalidStateError(j.state.Load(), JobStateStarted)
 	}
 
-	// FIXME: Create a new cgroup and add the process to it.
+	// TODO: Create a new cgroup and add the process to it.
 
 	if err := j.cmd.Start(); err != nil {
 		j.state.Store(JobStateFailed)
@@ -91,7 +93,7 @@ func (j *Job) Start() error {
 		j.cmd.Wait()
 
 		j.state.Store(JobStateStopped)
-		j.processState = j.cmd.ProcessState
+		j.processState.Store(j.cmd.ProcessState)
 
 		close(j.done)
 
@@ -110,7 +112,7 @@ func (j *Job) Stop() error {
 
 	j.interrupted.Store(true)
 
-	// FIXME: When cgroups are implemented, we'll use those to kill the process.
+	// TODO: When cgroups are implemented, use those to kill the process.
 	// In the meantime, just use cmd.Process.Kill() and accept the small risk.
 	return j.cmd.Process.Kill()
 }
@@ -120,41 +122,43 @@ func (j *Job) ID() string {
 	return j.id
 }
 
-// State returns the state of the job.
+// State returns the state of the Job.
 func (j *Job) State() JobState {
 	return j.state.Load()
 }
 
-// Interrupted returns whether the Job execution was prematurely stopped.
+// Interrupted returns whether the Job interrupted execution of the process.
 func (j *Job) Interrupted() bool {
 	return j.interrupted.Load()
 }
 
-// ExitCode returns the exit code of the process. In the case no exit code is
-// available, such as when the process hasn't yet exited, then -1 will be
-// returned.
+// ExitCode returns the exit code of the process or -1 if the process hasn't
+// exited or was interrupted.
 func (j *Job) ExitCode() int {
-	if j.processState == nil {
+	ps := j.processState.Load()
+	if ps == nil {
 		return -1
 	}
 
-	return j.processState.ExitCode()
+	return ps.ExitCode()
 }
 
-// StreamOutput returns an io.ReadCloser that streams the combined
-// stdout/stderr output from the process. Multiple clients can subscribe and
-// each will receive the full output from the beginning.
+// StreamOutput returns an io.ReadCloser of output from the Job.
+//
+// Read returns all output since the Job started and block waiting for new
+// output.
+// Close unsubscribes from the output stream.
 func (j *Job) StreamOutput() io.ReadCloser {
-	return j.outputManager.Subscribe()
+	return j.outputStreamer.Subscribe()
 }
 
-// Done returns a channel that is closed when the job is closed and the
+// Done returns a channel that is closed when the Job has completed and the
 // process has exited.
 func (j *Job) Done() <-chan struct{} {
 	return j.done
 }
 
-// Status returns the status of the job.
+// Status returns the status of the Job.
 func (j *Job) Status() *JobStatus {
 	return &JobStatus{
 		State:       j.state.Load(),
@@ -164,8 +168,5 @@ func (j *Job) Status() *JobStatus {
 }
 
 func (j *Job) cleanup() {
-	// NOTE: Output manager cleanup happens automatically when source pipe closes.
-
-	// FIXME: Remove cgroup when implemented.
-
+	// TODO: Remove cgroup when implemented.
 }

@@ -9,6 +9,8 @@ var (
 	ErrJobNotFound = errors.New("job not found")
 )
 
+// InvalidStateError is returned when attempting an invalid Job state
+// transition.
 type InvalidStateError struct {
 	from JobState
 	to   JobState
