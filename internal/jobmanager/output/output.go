@@ -32,7 +32,7 @@ type Streamer struct {
 
 	done chan struct{}
 	mu   sync.Mutex
-	cond *sync.Cond
+	cond sync.Cond
 }
 
 // NewStreamer creates a Streamer that reads from source and immediately begins
