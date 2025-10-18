@@ -82,7 +82,6 @@ func (m *Manager) QueryJob(id string) (*JobStatus, error) {
 //
 // Read will return all output since the Job started and block waiting for new
 // output.
-// Close unsubscribes from the output stream.
 func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
 	job, err := m.GetJob(id)
 	if err != nil {

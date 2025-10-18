@@ -1,5 +1,5 @@
 // Package output provides concurrent streaming of process output. Multiple
-// clients can subscribe to a Streamer and each receive the complete output
+// clients can 'subscribe' to a Streamer and each receive the complete output
 // from the beginning.
 package output
 
@@ -27,7 +27,7 @@ type Streamer struct {
 	// assumption for this is that 'everything will fit in memory'.
 	// In a production system, we'd need to look at alternative strategies, such
 	// as flushing the buffer to disk and reconstructing the segments for new
-	// clients on subscription.
+	// clients.
 	buffer []byte
 
 	done chan struct{}
@@ -97,7 +97,6 @@ func (s *Streamer) processOutput(source io.ReadCloser) {
 }
 
 // Subscribe returns a io.ReadCloser for reading data from the Streamer.
-// Close cancels the subscription.
 func (s *Streamer) Subscribe() io.ReadCloser {
 	return &reader{s: s}
 }

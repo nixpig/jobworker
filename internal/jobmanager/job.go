@@ -147,7 +147,6 @@ func (j *Job) ExitCode() int {
 //
 // Read returns all output since the Job started and block waiting for new
 // output.
-// Close unsubscribes from the output stream.
 func (j *Job) StreamOutput() io.ReadCloser {
 	return j.outputStreamer.Subscribe()
 }
