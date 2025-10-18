@@ -8,6 +8,10 @@ import (
 	"syscall"
 
 	"github.com/nixpig/jobworker/internal/jobmanager"
+
+	// NOTE: Strictly speaking, the std lib flag package would be fine, but
+	// wanted consistency between the client and server CLI without the overhead
+	// of cobra, so using pflag.
 	"github.com/spf13/pflag"
 )
 
