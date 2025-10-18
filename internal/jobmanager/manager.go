@@ -21,7 +21,7 @@ type Manager struct {
 	// then refactor this to an interface.
 	jobs map[string]*Job
 
-	mu sync.RWMutex
+	mu sync.Mutex
 }
 
 // NewManager creates a new Manager ready to run Jobs.
@@ -94,9 +94,9 @@ func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
 // Shutdown makes a 'best effort' attempt to stop any running Jobs managed by
 // the Manager.
 func (m *Manager) Shutdown() {
-	m.mu.RLock()
+	m.mu.Lock()
 	jobs := slices.Collect(maps.Values(m.jobs))
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
 	var wg sync.WaitGroup
 
@@ -121,9 +121,9 @@ func (m *Manager) Shutdown() {
 // GetJob returns the Job with the given id or ErrJobNotFound if it doesn't
 // exist.
 func (m *Manager) GetJob(id string) (*Job, error) {
-	m.mu.RLock()
+	m.mu.Lock()
 	job, exists := m.jobs[id]
-	m.mu.RUnlock()
+	m.mu.Unlock()
 
 	if !exists {
 		return nil, ErrJobNotFound
