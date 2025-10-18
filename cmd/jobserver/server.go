@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	streamBufferSize = 4096 // 4KB
+	// 4KB aligns with typical pipe buffer sizes.
+	streamBufferSize = 4096
 )
 
 type server struct {
@@ -154,6 +155,7 @@ func (s *server) StreamJobOutput(
 	return nil
 }
 
+// mapError translates jobmanager errors to gRPC errors.
 func (s *server) mapError(logMsg string, err error) error {
 	switch {
 	case errors.Is(err, jobmanager.ErrJobNotFound):
@@ -170,6 +172,7 @@ func (s *server) mapError(logMsg string, err error) error {
 	}
 }
 
+// contextCheckUnaryInterceptor rejects requests with a cancelled context.
 func contextCheckUnaryInterceptor(
 	ctx context.Context,
 	req any,
