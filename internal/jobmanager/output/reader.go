@@ -42,7 +42,9 @@ func (r *reader) Read(p []byte) (n int, err error) {
 // Close is used by a client to marks the reader as closed and notifies any
 // waiting reads that they can stop waiting.
 func (r *reader) Close() error {
-	r.closed.Swap(true)
+	if r.closed.Swap(true) {
+		return io.ErrClosedPipe
+	}
 
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

@@ -181,6 +181,24 @@ func TestOutputStreamer(t *testing.T) {
 		pw.Close()
 	})
 
+	t.Run("Test closing a closed sub", func(t *testing.T) {
+		t.Parallel()
+
+		s := output.NewStreamer(
+			io.NopCloser(strings.NewReader("Hello, world!")),
+		)
+
+		sub := s.Subscribe()
+
+		if err := sub.Close(); err != nil {
+			t.Errorf("expected not to receive error: got '%v'", err)
+		}
+
+		if err := sub.Close(); err != io.ErrClosedPipe {
+			t.Errorf("expected error to be ErrClosedPipe: got '%v'", err)
+		}
+	})
+
 	t.Run("Test concurrent access of single sub", func(t *testing.T) {
 		t.Parallel()
 
