@@ -2,6 +2,8 @@ package jobmanager
 
 import (
 	"io"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/google/uuid"
