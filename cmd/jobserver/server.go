@@ -46,7 +46,10 @@ func (s *server) start() error {
 
 	// TODO: Set up credentials and middleware
 
-	s.grpcServer = grpc.NewServer( /* creds and middleware */ )
+	s.grpcServer = grpc.NewServer(
+		// TODO: TLS, credentials and middleware.
+		grpc.UnaryInterceptor(contextCheckUnaryInterceptor),
+	)
 
 	api.RegisterJobServiceServer(s.grpcServer, s)
 
@@ -63,10 +66,6 @@ func (s *server) RunJob(
 	ctx context.Context,
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
-	if ctx.Err() != nil {
-		return nil, status.FromContextError(ctx.Err()).Err()
-	}
-
 	if req.Program == "" {
 		return nil, status.Error(codes.InvalidArgument, "program is empty")
 	}
@@ -83,10 +82,6 @@ func (s *server) StopJob(
 	ctx context.Context,
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
-	if ctx.Err() != nil {
-		return nil, status.FromContextError(ctx.Err()).Err()
-	}
-
 	if err := s.manager.StopJob(req.Id); err != nil {
 		return nil, s.mapError("stop job", err)
 	}
@@ -98,10 +93,6 @@ func (s *server) QueryJob(
 	ctx context.Context,
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
-	if ctx.Err() != nil {
-		return nil, status.FromContextError(ctx.Err()).Err()
-	}
-
 	jobStatus, err := s.manager.QueryJob(req.Id)
 	if err != nil {
 		return nil, s.mapError("query job", err)
@@ -124,6 +115,9 @@ func (s *server) StreamJobOutput(
 	req *api.StreamJobOutputRequest,
 	stream api.JobService_StreamJobOutputServer,
 ) error {
+	// TODO: If we end up with more than one streaming endpoint then create an
+	// interceptor for the context check, like has been done for unary endpoints.
+	// Not worth the hassle for a single endpoint though.
 	if stream.Context().Err() != nil {
 		return status.FromContextError(stream.Context().Err()).Err()
 	}
@@ -147,7 +141,6 @@ func (s *server) StreamJobOutput(
 				Output: buf[:n],
 			}); err != nil {
 				s.logger.Warn("stream data to client", "id", req.Id, "err", err)
-
 				return status.Error(codes.DataLoss, "failed to stream data")
 			}
 		}
@@ -163,18 +156,31 @@ func (s *server) StreamJobOutput(
 	return nil
 }
 
-func (s *server) mapError(msg string, err error) error {
+func (s *server) mapError(logMsg string, err error) error {
 	switch {
 	case errors.Is(err, jobmanager.ErrJobNotFound):
-		s.logger.Warn(msg, "err", err)
-		return status.Error(codes.NotFound, msg)
+		s.logger.Warn(logMsg, "err", err)
+		return status.Error(codes.NotFound, err.Error())
 
 	case errors.As(err, new(jobmanager.InvalidStateError)):
-		s.logger.Warn(msg, "err", err)
-		return status.Error(codes.FailedPrecondition, msg)
+		s.logger.Warn(logMsg, "err", err)
+		return status.Error(codes.FailedPrecondition, err.Error())
 
 	default:
-		s.logger.Error(msg, "err", err)
-		return status.Error(codes.Internal, msg)
+		s.logger.Error(logMsg, "err", err)
+		return status.Error(codes.Internal, "internal server error")
 	}
+}
+
+func contextCheckUnaryInterceptor(
+	ctx context.Context,
+	req any,
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (any, error) {
+	if ctx.Err() != nil {
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+
+	return handler(ctx, req)
 }
