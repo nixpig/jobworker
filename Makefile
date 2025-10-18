@@ -41,14 +41,14 @@ build-server:
 run-server: build-server
 	./tmp/bin/jobserver
 
-
-
+.PHONY: certs-ca
 certs-ca:
 	@mkdir -p certs
 	openssl genrsa -out certs/ca.key 4096
 	openssl req -new -x509 -key certs/ca.key -sha256 -subj "/CN=localhost" -days 365 -out certs/ca.crt
 
-certs-server: certs/ca.key
+.PHONY: certs-server
+certs-server:
 	@mkdir -p certs
 	openssl genrsa -out certs/server.key 4096
 	openssl req -new -key certs/server.key -subj "/CN=localhost" -out certs/server.csr
