@@ -72,7 +72,7 @@ func NewJob(
 // returns an InvalidStateError.
 func (j *Job) Start() error {
 	if !j.state.CompareAndSwap(JobStateCreated, (JobStateStarting)) {
-		return NewInvalidStateError(j.state.Load(), JobStateStarted)
+		return NewInvalidStateError(j.state.Load(), JobStateStarting)
 	}
 
 	// TODO: Create a new cgroup and add the process to it.
