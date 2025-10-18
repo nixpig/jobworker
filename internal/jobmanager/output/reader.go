@@ -42,10 +42,10 @@ func (r *reader) Read(p []byte) (n int, err error) {
 // Close is used by a client to 'unsubscribe'. It marks the reader as closed
 // and notifies any waiting reads that they can stop waiting.
 func (r *reader) Close() error {
+	r.closed.Swap(true)
+
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-
-	r.closed.Store(true)
 
 	r.s.cond.Broadcast()
 
