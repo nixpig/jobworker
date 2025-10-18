@@ -63,27 +63,18 @@ func (s *server) RunJob(
 	ctx context.Context,
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
-	s.logger.Debug("RunJob", "program", req.Program, "args", req.Args)
-
 	if ctx.Err() != nil {
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
 
 	if req.Program == "" {
-		return nil, status.Error(
-			codes.InvalidArgument,
-			"program cannot be empty",
-		)
+		return nil, status.Error(codes.InvalidArgument, "program is empty")
 	}
 
 	id, err := s.manager.RunJob(req.Program, req.Args)
 	if err != nil {
-		s.logger.Error("failed to run job", "err", err)
-
-		return nil, status.Error(codes.Internal, "Failed to run job")
+		return nil, s.mapError("run job", err)
 	}
-
-	s.logger.Debug("job started successfully", "job_id", id)
 
 	return &api.RunJobResponse{Id: id}, nil
 }
@@ -92,23 +83,13 @@ func (s *server) StopJob(
 	ctx context.Context,
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
-	s.logger.Debug("StopJob", "job_id", req.Id)
-
 	if ctx.Err() != nil {
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
-		s.logger.Error("failed to stop job", "job_id", req.Id, "err", err)
-
-		if errors.Is(err, jobmanager.ErrJobNotFound) {
-			return nil, status.Error(codes.NotFound, "Job not found")
-		}
-
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, s.mapError("stop job", err)
 	}
-
-	s.logger.Debug("job stopped successfully", "job_id", req.Id)
 
 	return &api.StopJobResponse{}, nil
 }
@@ -117,24 +98,14 @@ func (s *server) QueryJob(
 	ctx context.Context,
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
-	s.logger.Debug("QueryJob", "job_id", req.Id)
-
 	if ctx.Err() != nil {
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
 	if err != nil {
-		s.logger.Error("failed to query job", "job_id", req.Id, "err", err)
-
-		if errors.Is(err, jobmanager.ErrJobNotFound) {
-			return nil, status.Error(codes.NotFound, "Job not found")
-		}
-
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, s.mapError("query job", err)
 	}
-
-	s.logger.Debug("job queried successfully", "job_id", req.Id)
 
 	signal := ""
 	if jobStatus.Signal != nil {
@@ -153,38 +124,18 @@ func (s *server) StreamJobOutput(
 	req *api.StreamJobOutputRequest,
 	stream api.JobService_StreamJobOutputServer,
 ) error {
-	s.logger.Debug("StreamJobOutput", "job_id", req.Id)
-
 	if stream.Context().Err() != nil {
 		return status.FromContextError(stream.Context().Err()).Err()
 	}
 
 	outputReader, err := s.manager.StreamJobOutput(req.Id)
 	if err != nil {
-		s.logger.Error(
-			"failed to get job output stream",
-			"job_id",
-			req.Id,
-			"err",
-			err,
-		)
-
-		if errors.Is(err, jobmanager.ErrJobNotFound) {
-			return status.Error(codes.NotFound, "Job not found")
-		}
-
-		return status.Error(codes.Internal, "Internal server error")
+		return s.mapError("output stream", err)
 	}
 
 	defer func() {
 		if err := outputReader.Close(); err != nil {
-			s.logger.Error(
-				"failed to close output reader",
-				"job_id",
-				req.Id,
-				"err",
-				err,
-			)
+			s.logger.Warn("close output reader", "id", req.Id, "err", err)
 		}
 	}()
 
@@ -195,15 +146,9 @@ func (s *server) StreamJobOutput(
 			if err := stream.Send(&api.StreamJobOutputResponse{
 				Output: buf[:n],
 			}); err != nil {
-				s.logger.Warn(
-					"failed to stream data to client",
-					"job_id",
-					req.Id,
-					"err",
-					err,
-				)
+				s.logger.Warn("stream data to client", "id", req.Id, "err", err)
 
-				return status.Error(codes.DataLoss, "Failed to stream data")
+				return status.Error(codes.DataLoss, "failed to stream data")
 			}
 		}
 		if err != nil {
@@ -211,19 +156,25 @@ func (s *server) StreamJobOutput(
 				break
 			}
 
-			s.logger.Warn(
-				"error reading job output stream",
-				"job_id",
-				req.Id,
-				"err",
-				err,
-			)
-
-			return status.Error(codes.Internal, "Internal server error")
+			return s.mapError("read job output stream", err)
 		}
 	}
 
-	s.logger.Debug("streamed job output successfully", "job_id", req.Id)
-
 	return nil
+}
+
+func (s *server) mapError(msg string, err error) error {
+	switch {
+	case errors.Is(err, jobmanager.ErrJobNotFound):
+		s.logger.Warn(msg, "err", err)
+		return status.Error(codes.NotFound, msg)
+
+	case errors.As(err, new(jobmanager.InvalidStateError)):
+		s.logger.Warn(msg, "err", err)
+		return status.Error(codes.FailedPrecondition, msg)
+
+	default:
+		s.logger.Error(msg, "err", err)
+		return status.Error(codes.Internal, msg)
+	}
 }
