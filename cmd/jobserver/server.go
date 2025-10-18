@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -10,12 +11,15 @@ import (
 
 	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/jobmanager"
+	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
 const (
+	// streamBufferSize is the buffer size for reading job output.
 	// 4KB aligns with typical pipe buffer sizes.
 	streamBufferSize = 4096
 )
@@ -43,11 +47,17 @@ func (s *server) start() error {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
-	// TODO: Set up credentials and middleware
+	tlsCreds, err := s.loadTLSCreds()
+	if err != nil {
+		return fmt.Errorf("load TLS credentials: %w", err)
+	}
 
 	s.grpcServer = grpc.NewServer(
-		// TODO: TLS, credentials and middleware.
 		grpc.UnaryInterceptor(contextCheckUnaryInterceptor),
+
+		// TODO: AUTH MIDDLEWARE INTERCEPTORS
+
+		grpc.Creds(tlsCreds),
 	)
 
 	api.RegisterJobServiceServer(s.grpcServer, s)
@@ -81,6 +91,10 @@ func (s *server) StopJob(
 	ctx context.Context,
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is empty")
+	}
+
 	if err := s.manager.StopJob(req.Id); err != nil {
 		return nil, s.mapError("stop job", err)
 	}
@@ -92,6 +106,10 @@ func (s *server) QueryJob(
 	ctx context.Context,
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is empty")
+	}
+
 	jobStatus, err := s.manager.QueryJob(req.Id)
 	if err != nil {
 		return nil, s.mapError("query job", err)
@@ -114,6 +132,10 @@ func (s *server) StreamJobOutput(
 	req *api.StreamJobOutputRequest,
 	stream api.JobService_StreamJobOutputServer,
 ) error {
+	if req.Id == "" {
+		return status.Error(codes.InvalidArgument, "id is empty")
+	}
+
 	// TODO: If we end up with more than one streaming endpoint then create an
 	// interceptor for the context check, like has been done for unary endpoints.
 	// Not worth the hassle for a single endpoint though.
@@ -170,6 +192,25 @@ func (s *server) mapError(logMsg string, err error) error {
 		s.logger.Error(logMsg, "err", err)
 		return status.Error(codes.Internal, "internal server error")
 	}
+}
+
+// loadTLSCreds creates the gRPC transport credentials with mTLS enabled.
+func (s *server) loadTLSCreds() (credentials.TransportCredentials, error) {
+	cert, caPool, err := tlsconfig.LoadCertAndCA(
+		s.cfg.certPath,
+		s.cfg.keyPath,
+		s.cfg.caCertPath,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig := tlsconfig.BaseTLSConfig()
+	tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+	tlsConfig.ClientCAs = caPool
+	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+
+	return credentials.NewTLS(tlsConfig), nil
 }
 
 // contextCheckUnaryInterceptor rejects requests with a cancelled context.

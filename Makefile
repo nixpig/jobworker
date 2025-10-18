@@ -41,3 +41,17 @@ build-server:
 run-server: build-server
 	./tmp/bin/jobserver
 
+
+
+certs-ca:
+	@mkdir -p certs
+	openssl genrsa -out certs/ca.key 4096
+	openssl req -new -x509 -key certs/ca.key -sha256 -subj "/CN=localhost" -days 365 -out certs/ca.crt
+
+certs-server: certs/ca.key
+	@mkdir -p certs
+	openssl genrsa -out certs/server.key 4096
+	openssl req -new -key certs/server.key -subj "/CN=localhost" -out certs/server.csr
+	echo "subjectAltName = DNS:localhost" > certs/san.ext
+	openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/server.crt -days 365 -sha256 -extfile certs/san.ext
+

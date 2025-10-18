@@ -35,7 +35,6 @@ func main() {
 	logger := newLogger(cfg.debug)
 
 	manager := jobmanager.NewManager()
-	defer manager.Shutdown()
 
 	server := newServer(manager, logger, cfg)
 
@@ -61,6 +60,8 @@ func main() {
 	case <-ctx.Done():
 		logger.Info("shutting down server")
 		server.shutdown()
+		manager.Shutdown()
+		cancel()
 	}
 
 	logger.Info("server shutdown cleanly")
@@ -71,9 +72,27 @@ func parseFlags() *config {
 
 	pflag.Uint16Var(&cfg.port, "port", 8443, "gRPC server port")
 	pflag.BoolVar(&cfg.debug, "debug", false, "Enable debug logs")
-	pflag.StringVar(&cfg.certPath, "cert-path", "certs/server.crt", "Cert path")
-	pflag.StringVar(&cfg.keyPath, "key-path", "certs/server.key", "Key path")
-	pflag.StringVar(&cfg.caCertPath, "ca-path", "certs/ca.crt", "CA path")
+
+	pflag.StringVar(
+		&cfg.certPath,
+		"cert-path",
+		"certs/server.crt",
+		"Path to server TLS certificate",
+	)
+
+	pflag.StringVar(
+		&cfg.keyPath,
+		"key-path",
+		"certs/server.key",
+		"Path to server TLS private key",
+	)
+
+	pflag.StringVar(
+		&cfg.caCertPath,
+		"ca-cert-path",
+		"certs/ca.crt",
+		"Path to CA certificate for mTLS",
+	)
 
 	pflag.Parse()
 
@@ -89,7 +108,11 @@ func newLogger(debug bool) *slog.Logger {
 		level = slog.LevelInfo
 	}
 
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	// NOTE: Using a text handler, since this is running locally. In production,
+	// would use JSON so it can be easily hooked up to existing solution.
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: level,
-	}))
+	})
+
+	return slog.New(handler)
 }
