@@ -55,3 +55,10 @@ certs-server:
 	echo "subjectAltName = DNS:localhost" > certs/san.ext
 	openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/server.crt -days 365 -sha256 -extfile certs/san.ext
 
+.PHONY: certs-client
+certs-client:
+	@mkdir -p certs
+	openssl genrsa -out certs/client.key 4096
+	openssl req -new -key certs/client.key -subj "/CN=client" -out certs/client.csr
+	openssl x509 -req -in certs/client.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/client.crt -days 365 -sha256
+

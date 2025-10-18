@@ -31,6 +31,7 @@ type server struct {
 	logger     *slog.Logger
 	cfg        *config
 	grpcServer *grpc.Server
+	addr       net.Addr
 }
 
 func newServer(
@@ -46,6 +47,8 @@ func (s *server) start() error {
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
+
+	s.addr = listener.Addr()
 
 	tlsCreds, err := s.loadTLSCreds()
 	if err != nil {
