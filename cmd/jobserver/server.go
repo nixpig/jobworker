@@ -19,66 +19,83 @@ const (
 	streamBufferSize = 4096 // 4KB
 )
 
-type Server struct {
+// TODO: Generalise error handling in handlers to remove duplication.
+
+type server struct {
 	api.UnimplementedJobServiceServer
 	manager *jobmanager.Manager
+	logger  *slog.Logger
+	config  *serverConfig
 }
 
-func NewServer(manager *jobmanager.Manager) *Server {
-	return &Server{manager: manager}
+func newServer(
+	manager *jobmanager.Manager,
+	logger *slog.Logger,
+	config *serverConfig,
+) *server {
+	return &server{manager: manager, logger: logger, config: config}
 }
 
-func runServer(config *serverConfig, manager *jobmanager.Manager) error {
-	if config.debug {
-		slog.SetLogLoggerLevel(slog.LevelDebug)
-	}
-
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", config.port))
+func (s *server) Start() error {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.config.port))
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
-	grpcServer := NewServer(manager)
-
 	// TODO: Set up credentials and middleware
 
-	s := grpc.NewServer( /* creds and middleware */ )
+	g := grpc.NewServer( /* creds and middleware */ )
 
-	api.RegisterJobServiceServer(s, grpcServer)
+	api.RegisterJobServiceServer(g, s)
 
-	slog.Info("starting server", "port", config.port)
+	s.logger.Info("starting server", "port", s.config.port)
 
-	// TODO: For a production system we'd have handling of signals and graceful
+	// TODO: For a production system we'd have signal handling and graceful
 	// shutdown.
-	return s.Serve(listener)
+	return g.Serve(listener)
 }
 
-func (s *Server) RunJob(
+func (s *server) RunJob(
 	ctx context.Context,
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
-	slog.Debug("RunJob", "program", req.Program, "args", req.Args)
+	s.logger.Debug("RunJob", "program", req.Program, "args", req.Args)
+
+	if ctx.Err() != nil {
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+
+	if req.Program == "" {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"program cannot be empty",
+		)
+	}
 
 	id, err := s.manager.RunJob(req.Program, req.Args)
 	if err != nil {
-		slog.Error("failed to run job", "err", err)
+		s.logger.Error("failed to run job", "err", err)
 
 		return nil, status.Error(codes.Internal, "Failed to run job")
 	}
 
-	slog.Debug("job started successfully", "job_id", id)
+	s.logger.Debug("job started successfully", "job_id", id)
 
 	return &api.RunJobResponse{Id: id}, nil
 }
 
-func (s *Server) StopJob(
+func (s *server) StopJob(
 	ctx context.Context,
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
-	slog.Debug("StopJob", "job_id", req.Id)
+	s.logger.Debug("StopJob", "job_id", req.Id)
+
+	if ctx.Err() != nil {
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
-		slog.Error("failed to stop job", "job_id", req.Id, "err", err)
+		s.logger.Error("failed to stop job", "job_id", req.Id, "err", err)
 
 		if errors.Is(err, jobmanager.ErrJobNotFound) {
 			return nil, status.Error(codes.NotFound, "Job not found")
@@ -87,20 +104,24 @@ func (s *Server) StopJob(
 		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
-	slog.Debug("job stopped successfully", "job_id", req.Id)
+	s.logger.Debug("job stopped successfully", "job_id", req.Id)
 
 	return &api.StopJobResponse{}, nil
 }
 
-func (s *Server) QueryJob(
+func (s *server) QueryJob(
 	ctx context.Context,
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
-	slog.Debug("QueryJob", "job_id", req.Id)
+	s.logger.Debug("QueryJob", "job_id", req.Id)
+
+	if ctx.Err() != nil {
+		return nil, status.FromContextError(ctx.Err()).Err()
+	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
 	if err != nil {
-		slog.Error("failed to query job", "job_id", req.Id, "err", err)
+		s.logger.Error("failed to query job", "job_id", req.Id, "err", err)
 
 		if errors.Is(err, jobmanager.ErrJobNotFound) {
 			return nil, status.Error(codes.NotFound, "Job not found")
@@ -109,25 +130,34 @@ func (s *Server) QueryJob(
 		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
-	slog.Debug("job queried successfully", "job_id", req.Id)
+	s.logger.Debug("job queried successfully", "job_id", req.Id)
+
+	signal := ""
+	if jobStatus.Signal != nil {
+		signal = jobStatus.Signal.String()
+	}
 
 	return &api.QueryJobResponse{
 		State:       api.JobState(jobStatus.State),
 		ExitCode:    int32(jobStatus.ExitCode),
-		Signal:      jobStatus.Signal.String(),
+		Signal:      signal,
 		Interrupted: jobStatus.Interrupted,
 	}, nil
 }
 
-func (s *Server) StreamJobOutput(
+func (s *server) StreamJobOutput(
 	req *api.StreamJobOutputRequest,
 	stream api.JobService_StreamJobOutputServer,
 ) error {
-	slog.Debug("StreamJobOutput", "job_id", req.Id)
+	s.logger.Debug("StreamJobOutput", "job_id", req.Id)
+
+	if stream.Context().Err() != nil {
+		return status.FromContextError(stream.Context().Err()).Err()
+	}
 
 	outputReader, err := s.manager.StreamJobOutput(req.Id)
 	if err != nil {
-		slog.Error(
+		s.logger.Error(
 			"failed to get job output stream",
 			"job_id",
 			req.Id,
@@ -144,7 +174,7 @@ func (s *Server) StreamJobOutput(
 
 	defer func() {
 		if err := outputReader.Close(); err != nil {
-			slog.Error(
+			s.logger.Error(
 				"failed to close output reader",
 				"job_id",
 				req.Id,
@@ -161,7 +191,7 @@ func (s *Server) StreamJobOutput(
 			if err := stream.Send(&api.StreamJobOutputResponse{
 				Output: buf[:n],
 			}); err != nil {
-				slog.Warn(
+				s.logger.Warn(
 					"failed to stream data to client",
 					"job_id",
 					req.Id,
@@ -177,7 +207,7 @@ func (s *Server) StreamJobOutput(
 				break
 			}
 
-			slog.Warn(
+			s.logger.Warn(
 				"error reading job output stream",
 				"job_id",
 				req.Id,
@@ -189,7 +219,7 @@ func (s *Server) StreamJobOutput(
 		}
 	}
 
-	slog.Debug("streamed job output successfully", "job_id", req.Id)
+	s.logger.Debug("streamed job output successfully", "job_id", req.Id)
 
 	return nil
 }
