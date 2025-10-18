@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package job.v1;
+
+option go_package = "github.com/nixpig/jobworker/api/v1";
+
+service JobService {
+  rpc RunJob(RunJobRequest) returns (RunJobResponse);
+  rpc StopJob(StopJobRequest) returns (StopJobResponse);
+  rpc QueryJob(QueryJobRequest) returns (QueryJobResponse);
+  rpc StreamJobOutput(StreamJobOutputRequest) returns (stream StreamJobOutputResponse);
+}
+
+message RunJobRequest {
+  string program = 1; // Program to run as a job.
+  repeated string args = 2; // Arguments to pass to the program.
+}
+
+message RunJobResponse {
+  string id = 1; // ID of the started job.
+}
+
+message StopJobRequest {
+  string id = 1; // ID of the job to stop.
+}
+
+message StopJobResponse {}
+
+message QueryJobRequest {
+  string id = 1; // ID of the job to query.
+}
+
+message QueryJobResponse {
+  JobState state = 1; // State of the job.
+  int32 exit_code = 2; // Exit code of the job.
+  string signal = 3; // Signal received by the process.
+  bool interrupted = 4; // Set to `true` stopped by user.
+}
+
+message StreamJobOutputRequest {
+  string id = 1; // ID of the job to stream output from.
+}
+
+message StreamJobOutputResponse {
+  bytes output = 1; // Streamed bytes from the jobs output.
+}
+
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_CREATED = 1; // Job configured and resources allocated successfully.
+  JOB_STATE_STARTING = 2; // Job is starting.
+  JOB_STATE_STARTED = 3; // Job has started.
+  JOB_STATE_STOPPING = 4; // Job is stopping.
+  JOB_STATE_STOPPED = 5; // Job has stopped.
+  JOB_STATE_FAILED = 6; // Failure as a result of the service, rather than the underlying Job process.
+}
