@@ -19,11 +19,11 @@ import (
 const version = "0.0.1"
 
 type config struct {
-	port           uint16
-	debug          bool
-	serverCertPath string
-	serverKeyPath  string
-	caCertPath     string
+	port       uint16
+	debug      bool
+	certPath   string
+	keyPath    string
+	caCertPath string
 }
 
 func main() {
@@ -44,7 +44,6 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
-		syscall.SIGKILL,
 		syscall.SIGTERM,
 		os.Interrupt,
 	)
@@ -61,7 +60,7 @@ func main() {
 		server.shutdown()
 	}
 
-	logger.Info("done")
+	logger.Info("server shutdown cleanly")
 }
 
 func parseFlags() *config {
@@ -69,27 +68,9 @@ func parseFlags() *config {
 
 	pflag.Uint16Var(&cfg.port, "port", 8443, "gRPC server port")
 	pflag.BoolVar(&cfg.debug, "debug", false, "Enable debug logs")
-
-	pflag.StringVar(
-		&cfg.serverCertPath,
-		"server-cert",
-		"certs/server.crt",
-		"Path to server certificate",
-	)
-
-	pflag.StringVar(
-		&cfg.serverKeyPath,
-		"server-key",
-		"certs/server.key",
-		"Path to server private key",
-	)
-
-	pflag.StringVar(
-		&cfg.caCertPath,
-		"ca-cert",
-		"certs/ca.crt",
-		"Path to CA certificate",
-	)
+	pflag.StringVar(&cfg.certPath, "cert-path", "certs/server.crt", "Cert path")
+	pflag.StringVar(&cfg.keyPath, "key-path", "certs/server.key", "Key path")
+	pflag.StringVar(&cfg.caCertPath, "ca-path", "certs/ca.crt", "CA path")
 
 	pflag.Parse()
 
