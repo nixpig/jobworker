@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
@@ -31,6 +32,7 @@ type Job struct {
 type JobStatus struct {
 	State       JobState
 	ExitCode    int
+	Signal      os.Signal
 	Interrupted bool
 }
 
@@ -122,27 +124,6 @@ func (j *Job) ID() string {
 	return j.id
 }
 
-// State returns the state of the Job.
-func (j *Job) State() JobState {
-	return j.state.Load()
-}
-
-// Interrupted returns whether the Job interrupted execution of the process.
-func (j *Job) Interrupted() bool {
-	return j.interrupted.Load()
-}
-
-// ExitCode returns the exit code of the process or -1 if the process hasn't
-// exited or was interrupted.
-func (j *Job) ExitCode() int {
-	ps := j.processState.Load()
-	if ps == nil {
-		return -1
-	}
-
-	return ps.ExitCode()
-}
-
 // StreamOutput returns an io.ReadCloser of output from the Job.
 //
 // Read returns all output since the Job started and block waiting for new
@@ -159,9 +140,28 @@ func (j *Job) Done() <-chan struct{} {
 
 // Status returns the status of the Job.
 func (j *Job) Status() *JobStatus {
+	ps := j.processState.Load()
+
+	var sig os.Signal
+
+	exitCode := -1
+
+	if ps != nil {
+		exitCode = ps.ExitCode()
+
+		if ps.Sys() != nil {
+			if status, ok := ps.Sys().(syscall.WaitStatus); ok {
+				if status.Signaled() {
+					sig = status.Signal()
+				}
+			}
+		}
+	}
+
 	return &JobStatus{
 		State:       j.state.Load(),
-		ExitCode:    j.ExitCode(),
+		ExitCode:    exitCode,
+		Signal:      sig,
 		Interrupted: j.interrupted.Load(),
 	}
 }

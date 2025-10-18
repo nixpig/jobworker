@@ -101,7 +101,7 @@ func (m *Manager) Shutdown() {
 	var wg sync.WaitGroup
 
 	for _, job := range jobs {
-		if job.State() == JobStateStarted {
+		if job.Status().State == JobStateStarted {
 			wg.Go(func() {
 				if err := job.Stop(); err != nil {
 					// NOTE: In the context of a Shutdown where we're not attempting

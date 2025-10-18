@@ -2,6 +2,7 @@ package jobmanager_test
 
 import (
 	"io"
+	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
@@ -76,6 +77,7 @@ func TestJobManager(t *testing.T) {
 		testJobState(t, status, &jobmanager.JobStatus{
 			ExitCode:    -1,
 			State:       jobmanager.JobStateStopped,
+			Signal:      syscall.SIGKILL,
 			Interrupted: true,
 		})
 	})
@@ -145,6 +147,7 @@ func TestJobManager(t *testing.T) {
 		testJobState(t, status, &jobmanager.JobStatus{
 			ExitCode:    -1,
 			State:       jobmanager.JobStateStopped,
+			Signal:      syscall.SIGKILL,
 			Interrupted: true,
 		})
 	})
