@@ -1,5 +1,6 @@
 // Command jobserver implements a gRPC server for handling requests to execute
-// arbitrary Linux processes using the jobmanager library.
+// arbitrary Linux processes and stream their output using the jobmanager
+// library.
 package main
 
 import (
