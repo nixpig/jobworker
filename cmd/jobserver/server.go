@@ -19,8 +19,6 @@ const (
 	streamBufferSize = 4096 // 4KB
 )
 
-// TODO: Generalise error handling in handlers to remove duplication.
-
 type server struct {
 	api.UnimplementedJobServiceServer
 
