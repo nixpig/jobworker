@@ -24,12 +24,20 @@ coverage:
 
 .PHONY: clean
 clean:
-	rm -rf *.out
+	rm -rf *.out tmp
 
-.PHOTO: proto
+.PHONY: proto
 proto:
 	protoc --go_out=. \
 		--go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/v1/job.proto
+
+.PHONY: build-server
+build-server:
+	go build -o ./tmp/bin/jobserver -v ./cmd/jobserver
+
+.PHONY: run-server
+run-server: build-server
+	./tmp/bin/jobserver
 
