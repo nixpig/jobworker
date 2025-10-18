@@ -23,36 +23,40 @@ const (
 
 type server struct {
 	api.UnimplementedJobServiceServer
-	manager *jobmanager.Manager
-	logger  *slog.Logger
-	config  *serverConfig
+
+	manager    *jobmanager.Manager
+	logger     *slog.Logger
+	cfg        *config
+	grpcServer *grpc.Server
 }
 
 func newServer(
 	manager *jobmanager.Manager,
 	logger *slog.Logger,
-	config *serverConfig,
+	cfg *config,
 ) *server {
-	return &server{manager: manager, logger: logger, config: config}
+	return &server{manager: manager, logger: logger, cfg: cfg}
 }
 
-func (s *server) Start() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.config.port))
+func (s *server) start() error {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.port))
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
 	// TODO: Set up credentials and middleware
 
-	g := grpc.NewServer( /* creds and middleware */ )
+	s.grpcServer = grpc.NewServer( /* creds and middleware */ )
 
-	api.RegisterJobServiceServer(g, s)
+	api.RegisterJobServiceServer(s.grpcServer, s)
 
-	s.logger.Info("starting server", "port", s.config.port)
+	return s.grpcServer.Serve(listener)
+}
 
-	// TODO: For a production system we'd have signal handling and graceful
-	// shutdown.
-	return g.Serve(listener)
+func (s *server) shutdown() {
+	if s.grpcServer != nil {
+		s.grpcServer.GracefulStop()
+	}
 }
 
 func (s *server) RunJob(
