@@ -39,7 +39,7 @@ var rolePermissions = map[Role][]Permission{
 	RoleViewer: {PermissionJobQuery, PermissionJobStream},
 }
 
-var endpointPermissions = map[string]Permission{
+var methodPermissions = map[string]Permission{
 	"/job.v1.JobService/RunJob":          PermissionJobStart,
 	"/job.v1.JobService/StopJob":         PermissionJobStop,
 	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
@@ -77,11 +77,11 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 }
 
 // IsAuthorised checks if the given role has permission to access the given
-// gRPC endpoint. Returns nil if authorised, or error if not.
-func IsAuthorised(role Role, endpoint string) error {
-	requiredPermissions, exists := endpointPermissions[endpoint]
+// gRPC method. Returns nil if authorised, or error if not.
+func IsAuthorised(role Role, method string) error {
+	requiredPermissions, exists := methodPermissions[method]
 	if !exists {
-		return fmt.Errorf("specified endpoint not in endpoint permissions")
+		return fmt.Errorf("specified method not in method permissions")
 	}
 
 	permissions, ok := rolePermissions[role]

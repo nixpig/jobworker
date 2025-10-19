@@ -93,7 +93,7 @@ func (s *server) shutdown() {
 	}
 }
 
-// TODO: Add healthcheck endpoints for readiness/liveness probes.
+// TODO: Add healthcheck methods for readiness/liveness probes.
 
 func (s *server) RunJob(
 	ctx context.Context,
@@ -160,9 +160,9 @@ func (s *server) StreamJobOutput(
 		return status.Error(codes.InvalidArgument, "id is empty")
 	}
 
-	// TODO: If we end up with more than one streaming endpoint then create an
-	// interceptor for the context check, like has been done for unary endpoints.
-	// Not worth the hassle for a single endpoint though.
+	// TODO: If we end up with more than one streaming method then create an
+	// interceptor for the context check, like has been done for unary methods.
+	// Not worth the hassle for a single method though.
 	if stream.Context().Err() != nil {
 		return status.FromContextError(stream.Context().Err()).Err()
 	}
@@ -243,7 +243,7 @@ func contextCheckUnaryInterceptor(
 	}
 }
 
-// authUnaryInterceptor authorises clients for unary endpoints.
+// authUnaryInterceptor authorises clients for unary methods.
 func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -260,7 +260,7 @@ func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	}
 }
 
-// authStreamInterceptor authorises clients for streaming endpoints.
+// authStreamInterceptor authorises clients for streaming methods.
 func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 	return func(
 		srv any,
