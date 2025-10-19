@@ -58,11 +58,9 @@ func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
 		t.Fatalf("failed to setup client TLS: '%v'", err)
 	}
 
-	creds := credentials.NewTLS(clientTLSConfig)
-
 	conn, err := grpc.NewClient(
 		listener.Addr().String(),
-		grpc.WithTransportCredentials(creds),
+		grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect: '%v'", err)
