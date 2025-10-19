@@ -15,6 +15,8 @@ type Config struct {
 	Server     bool
 }
 
+// TODO: Add unit tests for production solution. Sufficiently exercised by
+// server integration tests.
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
