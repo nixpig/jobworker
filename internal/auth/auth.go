@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"context"
@@ -9,40 +9,40 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-type permission string
+type Permission string
 
 const (
-	permissionJobStart  permission = "job:start"
-	permissionJobStop   permission = "job:stop"
-	permissionJobQuery  permission = "job:query"
-	permissionJobStream permission = "job:stream"
+	PermissionJobStart  Permission = "job:start"
+	PermissionJobStop   Permission = "job:stop"
+	PermissionJobQuery  Permission = "job:query"
+	PermissionJobStream Permission = "job:stream"
 )
 
-type role string
+type Role string
 
 const (
-	roleOperator role = "operator"
-	roleViewer   role = "viewer"
+	RoleOperator Role = "operator"
+	RoleViewer   Role = "viewer"
 )
 
-var rolePermissions = map[role][]permission{
-	roleOperator: {
-		permissionJobStart,
-		permissionJobStop,
-		permissionJobQuery,
-		permissionJobStream,
+var RolePermissions = map[Role][]Permission{
+	RoleOperator: {
+		PermissionJobStart,
+		PermissionJobStop,
+		PermissionJobQuery,
+		PermissionJobStream,
 	},
-	roleViewer: {permissionJobQuery, permissionJobStream},
+	RoleViewer: {PermissionJobQuery, PermissionJobStream},
 }
 
-var endpointPermissions = map[string]permission{
-	"/job.v1.JobService/RunJob":          permissionJobStart,
-	"/job.v1.JobService/StopJob":         permissionJobStop,
-	"/job.v1.JobService/QueryJob":        permissionJobQuery,
-	"/job.v1.JobService/StreamJobOutput": permissionJobStream,
+var EndpointPermissions = map[string]Permission{
+	"/job.v1.JobService/RunJob":          PermissionJobStart,
+	"/job.v1.JobService/StopJob":         PermissionJobStop,
+	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
+	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
-func getClientIdentity(ctx context.Context) (string, string, error) {
+func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return "", "", fmt.Errorf("failed to get peer info from context")
@@ -70,13 +70,13 @@ func getClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-func isAuthorised(clientRole role, endpoint string) error {
-	requiredPermissions, exists := endpointPermissions[endpoint]
+func IsAuthorised(clientRole Role, endpoint string) error {
+	requiredPermissions, exists := EndpointPermissions[endpoint]
 	if !exists {
 		return fmt.Errorf("specified endpoint not in endpoint permissions")
 	}
 
-	permissions, ok := rolePermissions[clientRole]
+	permissions, ok := RolePermissions[clientRole]
 	if !ok {
 		return fmt.Errorf("specified role not in role permissions")
 	}
@@ -88,15 +88,15 @@ func isAuthorised(clientRole role, endpoint string) error {
 	return nil
 }
 
-func authorise(ctx context.Context, method string) error {
-	_, ou, err := getClientIdentity(ctx)
+func Authorise(ctx context.Context, method string) error {
+	_, ou, err := GetClientIdentity(ctx)
 	if err != nil {
 		return fmt.Errorf("get client identity: %w", err)
 	}
 
-	clientRole := role(ou)
+	clientRole := Role(ou)
 
-	if err := isAuthorised(clientRole, method); err != nil {
+	if err := IsAuthorised(clientRole, method); err != nil {
 		return fmt.Errorf("authorise client: %w", err)
 	}
 

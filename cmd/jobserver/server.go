@@ -9,6 +9,7 @@ import (
 	"net"
 
 	api "github.com/nixpig/jobworker/api/v1"
+	"github.com/nixpig/jobworker/internal/auth"
 	"github.com/nixpig/jobworker/internal/jobmanager"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
@@ -228,7 +229,7 @@ func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (any, error) {
-		if err := authorise(ctx, info.FullMethod); err != nil {
+		if err := auth.Authorise(ctx, info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
 			return nil, status.Error(codes.PermissionDenied, "not authorised")
 		}
@@ -245,7 +246,7 @@ func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		if err := authorise(ss.Context(), info.FullMethod); err != nil {
+		if err := auth.Authorise(ss.Context(), info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
 			return status.Error(codes.PermissionDenied, "not authorised")
 		}
