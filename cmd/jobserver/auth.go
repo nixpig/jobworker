@@ -1,12 +1,15 @@
-package auth
+package main
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 // TODO: Add unit tests in a production system. Omitting for now as testing
@@ -46,7 +49,7 @@ var endpointPermissions = map[string]Permission{
 	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
-func GetClientIdentity(ctx context.Context) (string, string, error) {
+func getClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return "", "", fmt.Errorf("failed to get peer info from context")
@@ -74,7 +77,7 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-func IsAuthorised(role Role, endpoint string) error {
+func isAuthorised(role Role, endpoint string) error {
 	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
 		return fmt.Errorf("specified endpoint not in endpoint permissions")
@@ -88,6 +91,39 @@ func IsAuthorised(role Role, endpoint string) error {
 	if !slices.Contains(permissions, requiredPermissions) {
 		return fmt.Errorf("required permission not in permissions for role")
 	}
+
+	return nil
+}
+
+func authorise(ctx context.Context, method string, logger *slog.Logger) error {
+	cn, ou, err := getClientIdentity(ctx)
+	if err != nil {
+		logger.Warn("failed to get client identity", "err", err)
+		return status.Error(codes.Unauthenticated, "not authenticated")
+	}
+
+	role := Role(ou)
+
+	if err := isAuthorised(role, method); err != nil {
+		logger.Warn(
+			"failed to authorise client",
+			"cn", cn,
+			"ou", ou,
+			"role", role,
+			"method", method,
+			"err", err,
+		)
+
+		return status.Error(codes.PermissionDenied, "not authorised")
+	}
+
+	logger.Debug(
+		"authorised client request",
+		"cn", cn,
+		"ou", ou,
+		"role", role,
+		"method", method,
+	)
 
 	return nil
 }

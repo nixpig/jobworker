@@ -9,7 +9,6 @@ import (
 	"net"
 
 	api "github.com/nixpig/jobworker/api/v1"
-	"github.com/nixpig/jobworker/internal/auth"
 	"github.com/nixpig/jobworker/internal/jobmanager"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
@@ -251,37 +250,4 @@ func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 
 		return handler(srv, ss)
 	}
-}
-
-func authorise(ctx context.Context, method string, logger *slog.Logger) error {
-	cn, ou, err := auth.GetClientIdentity(ctx)
-	if err != nil {
-		logger.Warn("failed to get client identity", "err", err)
-		return status.Error(codes.Unauthenticated, "not authenticated")
-	}
-
-	role := auth.Role(ou)
-
-	if err := auth.IsAuthorised(role, method); err != nil {
-		logger.Warn(
-			"failed to authorise client",
-			"cn", cn,
-			"ou", ou,
-			"role", role,
-			"method", method,
-			"err", err,
-		)
-
-		return status.Error(codes.PermissionDenied, "not authorised")
-	}
-
-	logger.Debug(
-		"authorised client request",
-		"cn", cn,
-		"ou", ou,
-		"role", role,
-		"method", method,
-	)
-
-	return nil
 }
