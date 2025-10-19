@@ -145,7 +145,9 @@ func testJobStatus(
 	}
 }
 
-// TODO: Add more individual tests to cover edge cases and error scenarios.
+// TODO: Add more individual tests to cover edge cases, error scenarios, and
+// full auth matrix.
+
 func TestJobServerIntegrationAsOperator(t *testing.T) {
 	operatorClient, _, cleanup := setupTestServerAndClients(t)
 	defer cleanup()

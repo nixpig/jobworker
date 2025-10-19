@@ -25,7 +25,7 @@ const (
 	RoleViewer   Role = "viewer"
 )
 
-var RolePermissions = map[Role][]Permission{
+var rolePermissions = map[Role][]Permission{
 	RoleOperator: {
 		PermissionJobStart,
 		PermissionJobStop,
@@ -35,7 +35,7 @@ var RolePermissions = map[Role][]Permission{
 	RoleViewer: {PermissionJobQuery, PermissionJobStream},
 }
 
-var EndpointPermissions = map[string]Permission{
+var endpointPermissions = map[string]Permission{
 	"/job.v1.JobService/RunJob":          PermissionJobStart,
 	"/job.v1.JobService/StopJob":         PermissionJobStop,
 	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
@@ -70,13 +70,13 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-func IsAuthorised(clientRole Role, endpoint string) error {
-	requiredPermissions, exists := EndpointPermissions[endpoint]
+func IsAuthorised(role Role, endpoint string) error {
+	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
 		return fmt.Errorf("specified endpoint not in endpoint permissions")
 	}
 
-	permissions, ok := RolePermissions[clientRole]
+	permissions, ok := rolePermissions[role]
 	if !ok {
 		return fmt.Errorf("specified role not in role permissions")
 	}
@@ -94,9 +94,13 @@ func Authorise(ctx context.Context, method string) error {
 		return fmt.Errorf("get client identity: %w", err)
 	}
 
-	clientRole := Role(ou)
+	role := Role(ou)
 
-	if err := IsAuthorised(clientRole, method); err != nil {
+	if _, exists := rolePermissions[role]; !exists {
+		return fmt.Errorf("unknown role: %s", ou)
+	}
+
+	if err := IsAuthorised(role, method); err != nil {
 		return fmt.Errorf("authorise client: %w", err)
 	}
 
