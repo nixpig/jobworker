@@ -41,6 +41,10 @@ build-server:
 run-server: build-server
 	./tmp/bin/jobserver
 
+.PHONY: certs-clean
+certs-clean:
+	@rm -rf certs
+
 .PHONY: certs-ca
 certs-ca:
 	@mkdir -p certs
@@ -53,14 +57,29 @@ certs-server:
 	openssl genrsa -out certs/server.key 4096
 	openssl req -new -key certs/server.key -subj "/CN=localhost" -out certs/server.csr
 	echo "subjectAltName = DNS:localhost,IP:127.0.0.1" > certs/san.ext
+	echo "keyUsage = critical,digitalSignature,keyEncipherment" >> certs/server.ext
+	echo "extendedKeyUsage = serverAuth" >> certs/server.ext
 	openssl x509 -req -in certs/server.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/server.crt -days 365 -sha256 -extfile certs/san.ext
 
-.PHONY: certs-client
-certs-client:
+.PHONY: certs-client-operator
+certs-client-operator:
 	@mkdir -p certs
-	openssl genrsa -out certs/client.key 4096
-	openssl req -new -key certs/client.key -subj "/CN=client" -out certs/client.csr
-	openssl x509 -req -in certs/client.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/client.crt -days 365 -sha256
+	@touch certs/client-operator.ext
+	openssl genrsa -out certs/client-operator.key 4096
+	openssl req -new -key certs/client-operator.key -subj "/CN=alice/OU=operator" -out certs/client-operator.csr
+	echo "keyUsage = critical,digitalSignature" > certs/client-operator.ext
+	echo "extendedKeyUsage = clientAuth" >> certs/client-operator.ext
+	openssl x509 -req -in certs/client-operator.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/client-operator.crt -days 365 -sha256
+
+.PHONY: certs-client-viewer
+certs-client-viewer:
+	@mkdir -p certs
+	@touch certs/client-viewer.ext
+	openssl genrsa -out certs/client-viewer.key 4096
+	openssl req -new -key certs/client-viewer.key -subj "/CN=alice/OU=viewer" -out certs/client-viewer.csr
+	echo "keyUsage = critical,digitalSignature" >> certs/client-viewer.ext
+	echo "extendedKeyUsage = clientAuth" >> certs/client-viewer.ext
+	openssl x509 -req -in certs/client-viewer.csr -CA certs/ca.crt -CAkey certs/ca.key -CAcreateserial -out certs/client-viewer.crt -days 365 -sha256
 
 .PHONY: certs
-certs: certs-ca certs-server certs-client
+certs: certs-ca certs-server certs-client-operator certs-client-viewer
