@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-// Permission ...
+// Permission represents an action that can be performed on the job service.
 type Permission string
 
 const (
@@ -20,7 +20,7 @@ const (
 	PermissionJobStream Permission = "job:stream"
 )
 
-// Role ...
+// Role is used to determine what collection of Permissions a client has.
 type Role string
 
 const (
@@ -45,7 +45,8 @@ var endpointPermissions = map[string]Permission{
 	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
-// GetClientIdentity ...
+// GetClientIdentity extracts the Common Name (CN) and OrganizationalUnit (OU)
+// fields from a client's mTLS certificate on the given gRPC context.
 func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
@@ -74,7 +75,8 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-// IsAuthorised ...
+// IsAuthorised checks if the given role has permission to access the given
+// gRPC endpoint. Returns nil if authorised, or error if not.
 func IsAuthorised(role Role, endpoint string) error {
 	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
@@ -93,7 +95,8 @@ func IsAuthorised(role Role, endpoint string) error {
 	return nil
 }
 
-// Authorise ...
+// Authorise verifies that the client in the gRPC context has permission to
+// call the given method.
 func Authorise(ctx context.Context, method string) error {
 	_, ou, err := GetClientIdentity(ctx)
 	if err != nil {

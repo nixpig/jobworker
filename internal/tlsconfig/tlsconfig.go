@@ -1,4 +1,4 @@
-// Package tlsconfig ...
+// Package tlsconfig provides utilities for configuring mTLS.
 package tlsconfig
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// Config ...
+// Config holds paramters needed to setup TLS for both clients and servers.
 type Config struct {
 	CertPath   string
 	KeyPath    string
@@ -17,10 +17,12 @@ type Config struct {
 	Server     bool
 }
 
-// TODO: Add unit tests for production solution. For this  Sufficiently exercised by
-// server integration tests.
+// TODO: Add unit tests for production solution. For this prototype, I think
+// it's sufficiently exercised by server integration tests.
 
-// SetupTLS ...
+// SetupTLS creates a TLS configuration for mTLS authentication.
+// When `config.server = true`, requires and verifies client certs.
+// When `config.server = false`, uses CA to verify server cert.
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
