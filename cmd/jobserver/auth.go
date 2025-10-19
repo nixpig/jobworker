@@ -12,10 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TODO: Add unit tests in a production system. Omitting for now as testing
-// all the permutations will test too long and these will be generally well
-// exercised by the server integration tests.
-
 type permission string
 
 const (
