@@ -77,13 +77,13 @@ func getClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-func isAuthorised(r role, endpoint string) error {
+func isAuthorised(clientRole role, endpoint string) error {
 	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
 		return fmt.Errorf("specified endpoint not in endpoint permissions")
 	}
 
-	permissions, ok := rolePermissions[r]
+	permissions, ok := rolePermissions[clientRole]
 	if !ok {
 		return fmt.Errorf("specified role not in role permissions")
 	}
@@ -102,14 +102,14 @@ func authorise(ctx context.Context, method string, logger *slog.Logger) error {
 		return status.Error(codes.Unauthenticated, "not authenticated")
 	}
 
-	r := role(ou)
+	clientRole := role(ou)
 
-	if err := isAuthorised(r, method); err != nil {
+	if err := isAuthorised(clientRole, method); err != nil {
 		logger.Warn(
 			"failed to authorise client",
 			"cn", cn,
 			"ou", ou,
-			"role", r,
+			"role", clientRole,
 			"method", method,
 			"err", err,
 		)
@@ -121,7 +121,7 @@ func authorise(ctx context.Context, method string, logger *slog.Logger) error {
 		"authorised client request",
 		"cn", cn,
 		"ou", ou,
-		"role", r,
+		"role", clientRole,
 		"method", method,
 	)
 
