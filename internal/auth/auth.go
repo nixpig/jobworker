@@ -2,12 +2,11 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 )
 
 // TODO: Add unit tests in a production system. Omitting for now as testing
@@ -50,17 +49,17 @@ var endpointPermissions = map[string]Permission{
 func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
-		return "", "", status.Error(codes.Unauthenticated, "not authenticated")
+		return "", "", fmt.Errorf("failed to get peer info from context")
 	}
 
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok {
-		return "", "", status.Error(codes.Unauthenticated, "not authenticated")
+		return "", "", fmt.Errorf("failed to get TLS info from peer auth info")
 	}
 
 	if len(tlsInfo.State.VerifiedChains) == 0 ||
 		len(tlsInfo.State.VerifiedChains[0]) == 0 {
-		return "", "", status.Error(codes.Unauthenticated, "not authenticated")
+		return "", "", fmt.Errorf("no verified chains in TLS info")
 	}
 
 	cert := tlsInfo.State.VerifiedChains[0][0]
@@ -76,18 +75,18 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 }
 
 func IsAuthorised(role Role, endpoint string) error {
-	requiredPermission, exists := endpointPermissions[endpoint]
+	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
-		return status.Error(codes.Unimplemented, "unknown endpoint")
+		return fmt.Errorf("specified endpoint not in endpoint permissions")
 	}
 
-	perms, ok := rolePermissions[role]
+	permissions, ok := rolePermissions[role]
 	if !ok {
-		return status.Error(codes.PermissionDenied, "unknown role")
+		return fmt.Errorf("specified role not in role permissions")
 	}
 
-	if slices.Contains(perms, requiredPermission) {
-		return status.Error(codes.PermissionDenied, "not authorised")
+	if slices.Contains(permissions, requiredPermissions) {
+		return fmt.Errorf("required permission not in permissions for role")
 	}
 
 	return nil
