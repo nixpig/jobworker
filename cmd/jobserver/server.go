@@ -9,6 +9,7 @@ import (
 	"net"
 
 	api "github.com/nixpig/jobworker/api/v1"
+	"github.com/nixpig/jobworker/internal/auth"
 	"github.com/nixpig/jobworker/internal/jobmanager"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
@@ -54,10 +55,13 @@ func (s *server) start(listener net.Listener) error {
 	}
 
 	s.grpcServer = grpc.NewServer(
-		grpc.UnaryInterceptor(contextCheckUnaryInterceptor),
-
-		// TODO: AUTH MIDDLEWARE INTERCEPTORS
-
+		grpc.ChainUnaryInterceptor(
+			contextCheckUnaryInterceptor(s.logger),
+			authUnaryInterceptor(s.logger),
+		),
+		grpc.ChainStreamInterceptor(
+			authStreamInterceptor(s.logger),
+		),
 		grpc.Creds(credentials.NewTLS(tlsConfig)),
 	)
 
@@ -199,14 +203,82 @@ func (s *server) mapError(logMsg string, err error) error {
 
 // contextCheckUnaryInterceptor rejects requests with a cancelled context.
 func contextCheckUnaryInterceptor(
-	ctx context.Context,
-	req any,
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	if ctx.Err() != nil {
-		return nil, status.FromContextError(ctx.Err()).Err()
+	logger *slog.Logger,
+) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (any, error) {
+		if ctx.Err() != nil {
+			logger.Debug("request context cancelled", "err", ctx.Err())
+
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
+
+		return handler(ctx, req)
+	}
+}
+
+// authUnaryInterceptor authorises clients for unary endpoints.
+func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (any, error) {
+		if err := authorise(ctx, info.FullMethod, logger); err != nil {
+			return nil, err
+		}
+
+		return handler(ctx, req)
+	}
+}
+
+// authStreamInterceptor authorises clients for streaming endpoints.
+func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
+	return func(
+		srv any,
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
+		if err := authorise(ss.Context(), info.FullMethod, logger); err != nil {
+			return err
+		}
+
+		return handler(srv, ss)
+	}
+}
+
+func authorise(ctx context.Context, method string, logger *slog.Logger) error {
+	cn, ou, err := auth.GetClientIdentity(ctx)
+	if err != nil {
+		logger.Warn("failed to get client identity", "err", err)
+		return err
 	}
 
-	return handler(ctx, req)
+	role := auth.Role(ou)
+
+	if err := auth.IsAuthorised(role, method); err != nil {
+		logger.Warn(
+			"failed to authorise client",
+			"cn", cn,
+			"ou", ou,
+			"err", err,
+		)
+
+		return err
+	}
+
+	logger.Debug(
+		"authorised client request",
+		"cn", cn,
+		"role", role,
+		"method", method,
+	)
+
+	return nil
 }
