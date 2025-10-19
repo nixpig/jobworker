@@ -31,8 +31,45 @@ type config struct {
 	caCertPath string
 }
 
+func (c *config) validate() error {
+	if c.port == 0 {
+		return fmt.Errorf("port must be in valid range")
+	}
+
+	if c.certPath == "" {
+		return fmt.Errorf("cert-path cannot be empty")
+	}
+
+	if _, err := os.Stat(c.certPath); err != nil {
+		return fmt.Errorf("failed to stat cert-path: %w", err)
+	}
+
+	if c.keyPath == "" {
+		return fmt.Errorf("key-path cannot be empty")
+	}
+
+	if _, err := os.Stat(c.keyPath); err != nil {
+		return fmt.Errorf("failed to stat key-path: %w", err)
+	}
+
+	if c.caCertPath == "" {
+		return fmt.Errorf("ca-cert-path cannot be empty")
+	}
+
+	if _, err := os.Stat(c.caCertPath); err != nil {
+		return fmt.Errorf("failed to stat ca-cert-path: %w", err)
+	}
+
+	return nil
+}
+
 func main() {
 	cfg := parseFlags()
+
+	if err := cfg.validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid configuration: %s\n", err.Error())
+		os.Exit(1)
+	}
 
 	logger := newLogger(cfg.debug)
 
