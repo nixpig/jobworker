@@ -19,14 +19,18 @@ import (
 
 const (
 	// NOTE: Generate all cert files with: `make certs`.
-	caCertPath     = "../../certs/ca.crt"
-	serverCertPath = "../../certs/server.crt"
-	serverKeyPath  = "../../certs/server.key"
-	clientCertPath = "../../certs/client-operator.crt"
-	clientKeyPath  = "../../certs/client-operator.key"
+	caCertPath       = "../../certs/ca.crt"
+	serverCertPath   = "../../certs/server.crt"
+	serverKeyPath    = "../../certs/server.key"
+	operatorCertPath = "../../certs/client-operator.crt"
+	operatorKeyPath  = "../../certs/client-operator.key"
+	viewerCertPath   = "../../certs/client-viewer.crt"
+	viewerKeyPath    = "../../certs/client-viewer.key"
 )
 
-func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
+func setupTestServerAndClients(
+	t *testing.T,
+) (api.JobServiceClient, api.JobServiceClient, func()) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -47,23 +51,42 @@ func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
 		},
 	)
 
-	clientTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
-		CertPath:   clientCertPath,
-		KeyPath:    clientKeyPath,
+	operatorTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+		CertPath:   operatorCertPath,
+		KeyPath:    operatorKeyPath,
 		CACertPath: caCertPath,
 		Server:     false,
 		ServerAddr: listener.Addr().String(),
 	})
 	if err != nil {
-		t.Fatalf("failed to setup client TLS: '%v'", err)
+		t.Fatalf("failed to setup operator TLS: '%v'", err)
 	}
 
-	conn, err := grpc.NewClient(
+	operatorConn, err := grpc.NewClient(
 		listener.Addr().String(),
-		grpc.WithTransportCredentials(credentials.NewTLS(clientTLSConfig)),
+		grpc.WithTransportCredentials(credentials.NewTLS(operatorTLSConfig)),
 	)
 	if err != nil {
-		t.Fatalf("failed to connect: '%v'", err)
+		t.Fatalf("operator failed to connect: '%v'", err)
+	}
+
+	viewerTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+		CertPath:   viewerCertPath,
+		KeyPath:    viewerKeyPath,
+		CACertPath: caCertPath,
+		Server:     false,
+		ServerAddr: listener.Addr().String(),
+	})
+	if err != nil {
+		t.Fatalf("failed to setup viewer TLS: '%v'", err)
+	}
+
+	viewerConn, err := grpc.NewClient(
+		listener.Addr().String(),
+		grpc.WithTransportCredentials(credentials.NewTLS(viewerTLSConfig)),
+	)
+	if err != nil {
+		t.Fatalf("viewer failed to connect: '%v'", err)
 	}
 
 	go func() {
@@ -75,10 +98,15 @@ func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
 	cleanup := func() {
 		s.shutdown()
 		manager.Shutdown()
-		conn.Close()
+		operatorConn.Close()
+		viewerConn.Close()
 	}
 
-	return api.NewJobServiceClient(conn), cleanup
+	return api.NewJobServiceClient(
+			operatorConn,
+		), api.NewJobServiceClient(
+			viewerConn,
+		), cleanup
 }
 
 func testJobStatus(
@@ -118,8 +146,8 @@ func testJobStatus(
 }
 
 // TODO: Add more individual tests to cover edge cases and error scenarios.
-func TestJobServerIntegration(t *testing.T) {
-	client, cleanup := setupTestClientAndServer(t)
+func TestJobServerIntegrationAsOperator(t *testing.T) {
+	operatorClient, _, cleanup := setupTestServerAndClients(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -130,7 +158,7 @@ func TestJobServerIntegration(t *testing.T) {
 			Args:    []string{"30"},
 		}
 
-		runResp, err := client.RunJob(ctx, runReq)
+		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -143,7 +171,7 @@ func TestJobServerIntegration(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		queryResp, err := client.QueryJob(ctx, queryReq)
+		queryResp, err := operatorClient.QueryJob(ctx, queryReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -159,13 +187,13 @@ func TestJobServerIntegration(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		_, err = client.StopJob(ctx, stopReq)
+		_, err = operatorClient.StopJob(ctx, stopReq)
 		if err != nil {
 			t.Errorf("exptected not to get error: got '%v'", err)
 		}
 
 		// Try stopping an already stopped job
-		_, err = client.StopJob(ctx, stopReq)
+		_, err = operatorClient.StopJob(ctx, stopReq)
 		st, ok := status.FromError(err)
 		if !ok {
 			t.Errorf("expected gRPC status error: got '%v'", err)
@@ -175,7 +203,7 @@ func TestJobServerIntegration(t *testing.T) {
 			t.Errorf("expected FailedPrecondition error: got '%v'", st.Code())
 		}
 
-		queryResp, err = client.QueryJob(ctx, queryReq)
+		queryResp, err = operatorClient.QueryJob(ctx, queryReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -194,7 +222,7 @@ func TestJobServerIntegration(t *testing.T) {
 			Args:    []string{"Hello, world!"},
 		}
 
-		runResp, err := client.RunJob(ctx, runReq)
+		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -205,7 +233,7 @@ func TestJobServerIntegration(t *testing.T) {
 
 		// Stream from same job multiple times
 		for i := range 3 {
-			stream, err := client.StreamJobOutput(ctx, streamReq)
+			stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
 			if err != nil {
 				t.Errorf("exptected not to get error: got '%v'", err)
 			}
@@ -238,7 +266,7 @@ func TestJobServerIntegration(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		queryResp, err := client.QueryJob(ctx, queryReq)
+		queryResp, err := operatorClient.QueryJob(ctx, queryReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -250,5 +278,131 @@ func TestJobServerIntegration(t *testing.T) {
 			Interrupted: false,
 		})
 
+	})
+}
+
+func TestJobServerIntegrationAsViewer(t *testing.T) {
+	operatorClient, viewerClient, cleanup := setupTestServerAndClients(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	t.Run("Test job lifecycle", func(t *testing.T) {
+		runReq := &api.RunJobRequest{
+			Program: "sleep",
+			Args:    []string{"30"},
+		}
+
+		_, err := viewerClient.RunJob(ctx, runReq)
+		st, ok := status.FromError(err)
+		if !ok {
+			t.Errorf("expected gRPC status error: got '%v'", err)
+		}
+
+		if st.Code() != codes.PermissionDenied {
+			t.Errorf("expected PermissionDenied error: got '%v'", st.Code())
+		}
+
+		runResp, err := operatorClient.RunJob(ctx, runReq)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		if _, err := uuid.Parse(runResp.Id); err != nil {
+			t.Errorf("expected to get valid UUID: got '%v'", runResp.Id)
+		}
+
+		queryReq := &api.QueryJobRequest{
+			Id: runResp.Id,
+		}
+
+		queryResp, err := viewerClient.QueryJob(ctx, queryReq)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		testJobStatus(t, queryResp, &api.QueryJobResponse{
+			ExitCode:    -1,
+			State:       api.JobState_JOB_STATE_STARTED,
+			Signal:      "",
+			Interrupted: false,
+		})
+
+		stopReq := &api.StopJobRequest{
+			Id: runResp.Id,
+		}
+
+		_, err = viewerClient.StopJob(ctx, stopReq)
+		st, ok = status.FromError(err)
+		if !ok {
+			t.Errorf("expected gRPC status error: got '%v'", err)
+		}
+
+		if st.Code() != codes.PermissionDenied {
+			t.Errorf("expected PermissionDenied error: got '%v'", st.Code())
+		}
+	})
+
+	t.Run("Test job output streaming", func(t *testing.T) {
+		runReq := &api.RunJobRequest{
+			Program: "echo",
+			Args:    []string{"Hello, world!"},
+		}
+
+		runResp, err := operatorClient.RunJob(ctx, runReq)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		streamReq := &api.StreamJobOutputRequest{
+			Id: runResp.Id,
+		}
+
+		// Stream from same job multiple times
+		for i := range 3 {
+			stream, err := viewerClient.StreamJobOutput(ctx, streamReq)
+			if err != nil {
+				t.Errorf("exptected not to get error: got '%v'", err)
+			}
+
+			var output []byte
+
+			for {
+				resp, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Errorf("exptected not to get error: got '%v'", err)
+				}
+
+				output = append(output, resp.Output...)
+			}
+
+			if string(output) != "Hello, world!\n" {
+				t.Errorf(
+					"stream '%d' expected output: got '%s', want '%s'",
+					i,
+					string(output),
+					"Hello, world!",
+				)
+			}
+		}
+
+		queryReq := &api.QueryJobRequest{
+			Id: runResp.Id,
+		}
+
+		queryResp, err := viewerClient.QueryJob(ctx, queryReq)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		testJobStatus(t, queryResp, &api.QueryJobResponse{
+			ExitCode:    0,
+			State:       api.JobState_JOB_STATE_STOPPED,
+			Signal:      "",
+			Interrupted: false,
+		})
 	})
 }
