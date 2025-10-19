@@ -203,31 +203,35 @@ func TestJobServerIntegration(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		stream, err := client.StreamJobOutput(ctx, streamReq)
-		if err != nil {
-			t.Errorf("exptected not to get error: got '%v'", err)
-		}
-
-		var output []byte
-
-		for {
-			resp, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
+		// Stream from same job multiple times
+		for i := range 3 {
+			stream, err := client.StreamJobOutput(ctx, streamReq)
 			if err != nil {
 				t.Errorf("exptected not to get error: got '%v'", err)
 			}
 
-			output = append(output, resp.Output...)
-		}
+			var output []byte
 
-		if string(output) != "Hello, world!\n" {
-			t.Errorf(
-				"expected output: got '%s', want '%s'",
-				string(output),
-				"Hello, world!",
-			)
+			for {
+				resp, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Errorf("exptected not to get error: got '%v'", err)
+				}
+
+				output = append(output, resp.Output...)
+			}
+
+			if string(output) != "Hello, world!\n" {
+				t.Errorf(
+					"stream '%d' expected output: got '%s', want '%s'",
+					i,
+					string(output),
+					"Hello, world!",
+				)
+			}
 		}
 
 		queryReq := &api.QueryJobRequest{
