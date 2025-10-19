@@ -1,4 +1,5 @@
-// Package auth ...
+// Package auth provides the auth model and utilities for working with auth
+// for the job service.
 package auth
 
 import (
