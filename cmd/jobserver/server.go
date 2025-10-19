@@ -79,7 +79,7 @@ func (s *server) shutdown() {
 		return
 	}
 
-	doneCh := make(chan struct{})
+	doneCh := make(chan struct{}, 1)
 	go func() {
 		s.grpcServer.GracefulStop()
 		close(doneCh)
@@ -180,12 +180,9 @@ func (s *server) StreamJobOutput(
 
 	buf := make([]byte, streamBufferSize)
 	for {
-		select {
-		case <-stream.Context().Done():
+		if stream.Context().Err() != nil {
 			s.logger.Debug("stream cancelled by client", "id", req.Id)
 			return status.FromContextError(stream.Context().Err()).Err()
-
-		default:
 		}
 
 		n, err := outputReader.Read(buf)
