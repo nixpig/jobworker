@@ -103,11 +103,10 @@ func setupTestServerAndClients(
 		viewerConn.Close()
 	}
 
-	return api.NewJobServiceClient(
-			operatorConn,
-		), api.NewJobServiceClient(
-			viewerConn,
-		), cleanup
+	operatorClient := api.NewJobServiceClient(operatorConn)
+	viewerClient := api.NewJobServiceClient(viewerConn)
+
+	return operatorClient, viewerClient, cleanup
 }
 
 func testJobStatus(

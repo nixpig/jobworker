@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	// NOTE: The std lib flag package would be fine, but wanted consistent UX
+	// between the client and server CLI without the overhead of cobra, so using
+	// pflag package.
 	"github.com/spf13/pflag"
 )
 

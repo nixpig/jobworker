@@ -13,9 +13,6 @@ import (
 	"syscall"
 
 	"github.com/nixpig/jobworker/internal/jobmanager"
-	// NOTE: The std lib flag package would be fine, but wanted consistent UX
-	// between the client and server CLI without the overhead of cobra, so using
-	// pflag package.
 )
 
 // TODO: Inject version at build time.
