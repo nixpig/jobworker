@@ -164,6 +164,7 @@ func TestJobServerIntegration(t *testing.T) {
 			t.Errorf("exptected not to get error: got '%v'", err)
 		}
 
+		// Try stopping an already stopped job
 		_, err = client.StopJob(ctx, stopReq)
 		st, ok := status.FromError(err)
 		if !ok {
