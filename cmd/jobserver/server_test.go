@@ -22,8 +22,8 @@ const (
 	caCertPath     = "../../certs/ca.crt"
 	serverCertPath = "../../certs/server.crt"
 	serverKeyPath  = "../../certs/server.key"
-	clientCertPath = "../../certs/client.crt"
-	clientKeyPath  = "../../certs/client.key"
+	clientCertPath = "../../certs/client-operator.crt"
+	clientKeyPath  = "../../certs/client-operator.key"
 )
 
 func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {

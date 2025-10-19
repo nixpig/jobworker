@@ -40,10 +40,10 @@ var rolePermissions = map[Role][]Permission{
 }
 
 var endpointPermissions = map[string]Permission{
-	"jobworker.JobService/RunJob":          PermissionJobStart,
-	"jobworker.JobService/StopJob":         PermissionJobStop,
-	"jobworker.JobService/QueryJob":        PermissionJobQuery,
-	"jobworker.JobService/StreamJobOutput": PermissionJobStream,
+	"/job.v1.JobService/RunJob":          PermissionJobStart,
+	"/job.v1.JobService/StopJob":         PermissionJobStop,
+	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
+	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
 func GetClientIdentity(ctx context.Context) (string, string, error) {
@@ -85,7 +85,7 @@ func IsAuthorised(role Role, endpoint string) error {
 		return fmt.Errorf("specified role not in role permissions")
 	}
 
-	if slices.Contains(permissions, requiredPermissions) {
+	if !slices.Contains(permissions, requiredPermissions) {
 		return fmt.Errorf("required permission not in permissions for role")
 	}
 
