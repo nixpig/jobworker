@@ -1,3 +1,4 @@
+// Package tlsconfig ...
 package tlsconfig
 
 import (
@@ -7,6 +8,7 @@ import (
 	"os"
 )
 
+// Config ...
 type Config struct {
 	CertPath   string
 	KeyPath    string
@@ -15,8 +17,10 @@ type Config struct {
 	Server     bool
 }
 
-// TODO: Add unit tests for production solution. Sufficiently exercised by
+// TODO: Add unit tests for production solution. For this  Sufficiently exercised by
 // server integration tests.
+
+// SetupTLS ...
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {

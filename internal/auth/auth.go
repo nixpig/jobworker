@@ -1,3 +1,4 @@
+// Package auth ...
 package auth
 
 import (
@@ -9,6 +10,7 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+// Permission ...
 type Permission string
 
 const (
@@ -18,6 +20,7 @@ const (
 	PermissionJobStream Permission = "job:stream"
 )
 
+// Role ...
 type Role string
 
 const (
@@ -42,6 +45,7 @@ var endpointPermissions = map[string]Permission{
 	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
+// GetClientIdentity ...
 func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
@@ -70,6 +74,7 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
+// IsAuthorised ...
 func IsAuthorised(role Role, endpoint string) error {
 	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
@@ -88,6 +93,7 @@ func IsAuthorised(role Role, endpoint string) error {
 	return nil
 }
 
+// Authorise ...
 func Authorise(ctx context.Context, method string) error {
 	_, ou, err := GetClientIdentity(ctx)
 	if err != nil {

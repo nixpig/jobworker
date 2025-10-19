@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	api "github.com/nixpig/jobworker/api/v1"
@@ -145,6 +146,36 @@ func testJobStatus(
 	}
 }
 
+func waitForJobState(
+	t *testing.T,
+	client api.JobServiceClient,
+	id string,
+	wantState api.JobState,
+	timeout time.Duration,
+	interval time.Duration,
+) *api.QueryJobResponse {
+	t.Helper()
+
+	ctx := context.Background()
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		resp, err := client.QueryJob(ctx, &api.QueryJobRequest{Id: id})
+		if err != nil {
+			continue
+		}
+
+		if resp.State == wantState {
+			return resp
+		}
+
+		time.Sleep(interval)
+	}
+
+	t.Fatalf("timeout out waiting for job state")
+	return nil
+}
+
 // TODO: Add more individual tests to cover edge cases, error scenarios, and
 // full auth matrix.
 
@@ -205,12 +236,16 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			t.Errorf("expected FailedPrecondition error: got '%v'", st.Code())
 		}
 
-		queryResp, err = operatorClient.QueryJob(ctx, queryReq)
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		jobStatus := waitForJobState(
+			t,
+			operatorClient,
+			runResp.Id,
+			api.JobState_JOB_STATE_STOPPED,
+			1*time.Second,
+			50*time.Millisecond,
+		)
 
-		testJobStatus(t, queryResp, &api.QueryJobResponse{
+		testJobStatus(t, jobStatus, &api.QueryJobResponse{
 			ExitCode:    -1,
 			State:       api.JobState_JOB_STATE_STOPPED,
 			Signal:      "killed",
@@ -264,16 +299,16 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			}
 		}
 
-		queryReq := &api.QueryJobRequest{
-			Id: runResp.Id,
-		}
+		jobStatus := waitForJobState(
+			t,
+			operatorClient,
+			runResp.Id,
+			api.JobState_JOB_STATE_STOPPED,
+			1*time.Second,
+			50*time.Millisecond,
+		)
 
-		queryResp, err := operatorClient.QueryJob(ctx, queryReq)
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
-
-		testJobStatus(t, queryResp, &api.QueryJobResponse{
+		testJobStatus(t, jobStatus, &api.QueryJobResponse{
 			ExitCode:    0,
 			State:       api.JobState_JOB_STATE_STOPPED,
 			Signal:      "",
@@ -391,16 +426,16 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 			}
 		}
 
-		queryReq := &api.QueryJobRequest{
-			Id: runResp.Id,
-		}
+		jobStatus := waitForJobState(
+			t,
+			viewerClient,
+			runResp.Id,
+			api.JobState_JOB_STATE_STOPPED,
+			1*time.Second,
+			50*time.Millisecond,
+		)
 
-		queryResp, err := viewerClient.QueryJob(ctx, queryReq)
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
-
-		testJobStatus(t, queryResp, &api.QueryJobResponse{
+		testJobStatus(t, jobStatus, &api.QueryJobResponse{
 			ExitCode:    0,
 			State:       api.JobState_JOB_STATE_STOPPED,
 			Signal:      "",
