@@ -42,11 +42,18 @@ func newServer(
 }
 
 func (s *server) start(listener net.Listener) error {
-
-	tlsCreds, err := s.loadTLSCreds()
+	tlsConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+		CertPath:   s.cfg.certPath,
+		KeyPath:    s.cfg.keyPath,
+		CACertPath: s.cfg.caCertPath,
+		Server:     true,
+		ServerAddr: s.addr,
+	})
 	if err != nil {
-		return fmt.Errorf("load TLS credentials: %w", err)
+		return fmt.Errorf("setup TLS config: %w", err)
 	}
+
+	tlsCreds := credentials.NewTLS(tlsConfig)
 
 	s.grpcServer = grpc.NewServer(
 		grpc.UnaryInterceptor(contextCheckUnaryInterceptor),
@@ -191,22 +198,6 @@ func (s *server) mapError(logMsg string, err error) error {
 		s.logger.Error(logMsg, "err", err)
 		return status.Error(codes.Internal, "internal server error")
 	}
-}
-
-// loadTLSCreds creates the gRPC transport credentials with mTLS enabled.
-func (s *server) loadTLSCreds() (credentials.TransportCredentials, error) {
-	tlsConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
-		CertPath:   s.cfg.certPath,
-		KeyPath:    s.cfg.keyPath,
-		CACertPath: s.cfg.caCertPath,
-		Server:     true,
-		ServerAddr: s.addr,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return credentials.NewTLS(tlsConfig), nil
 }
 
 // contextCheckUnaryInterceptor rejects requests with a cancelled context.
