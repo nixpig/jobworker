@@ -117,13 +117,13 @@ func testJobStatus(
 	}
 }
 
+// TODO: Add more individual tests to cover edge cases and error scenarios.
 func TestJobServerIntegration(t *testing.T) {
 	client, cleanup := setupTestClientAndServer(t)
 	defer cleanup()
 
 	ctx := context.Background()
 
-	// TODO: Add more individual tests to cover edge cases and error scenarios.
 	t.Run("Test job lifecycle", func(t *testing.T) {
 		runReq := &api.RunJobRequest{
 			Program: "sleep",
