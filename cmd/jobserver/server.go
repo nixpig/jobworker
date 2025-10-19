@@ -53,14 +53,12 @@ func (s *server) start(listener net.Listener) error {
 		return fmt.Errorf("setup TLS config: %w", err)
 	}
 
-	tlsCreds := credentials.NewTLS(tlsConfig)
-
 	s.grpcServer = grpc.NewServer(
 		grpc.UnaryInterceptor(contextCheckUnaryInterceptor),
 
 		// TODO: AUTH MIDDLEWARE INTERCEPTORS
 
-		grpc.Creds(tlsCreds),
+		grpc.Creds(credentials.NewTLS(tlsConfig)),
 	)
 
 	api.RegisterJobServiceServer(s.grpcServer, s)
