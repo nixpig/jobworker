@@ -152,7 +152,6 @@ func (s *server) StreamJobOutput(
 	}
 
 	defer func() {
-		// TODO: Confirm this actually closes down the stream in Streamer and Manager.
 		if err := outputReader.Close(); err != nil {
 			s.logger.Warn("close output reader", "id", req.Id, "err", err)
 		}
