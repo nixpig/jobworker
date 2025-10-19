@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"time"
 
 	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/auth"
@@ -73,10 +74,26 @@ func (s *server) start(listener net.Listener) error {
 }
 
 func (s *server) shutdown() {
-	if s.grpcServer != nil {
+	if s.grpcServer == nil {
+		s.logger.Warn("no gRPC server started")
+		return
+	}
+
+	doneCh := make(chan struct{})
+	go func() {
 		s.grpcServer.GracefulStop()
+		close(doneCh)
+	}()
+
+	select {
+	case <-doneCh:
+	case <-time.After(10 * time.Second):
+		s.logger.Warn("graceful shutdown timed out, forcing stop")
+		s.grpcServer.Stop()
 	}
 }
+
+// TODO: Add healthcheck endpoints for readiness/liveness probes.
 
 func (s *server) RunJob(
 	ctx context.Context,
@@ -163,6 +180,14 @@ func (s *server) StreamJobOutput(
 
 	buf := make([]byte, streamBufferSize)
 	for {
+		select {
+		case <-stream.Context().Done():
+			s.logger.Debug("stream cancelled by client", "id", req.Id)
+			return status.FromContextError(stream.Context().Err()).Err()
+
+		default:
+		}
+
 		n, err := outputReader.Read(buf)
 		if n > 0 {
 			if err := stream.Send(&api.StreamJobOutputResponse{

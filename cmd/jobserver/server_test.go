@@ -71,6 +71,8 @@ func setupTestServerAndClients(
 		t.Fatalf("operator failed to connect: '%v'", err)
 	}
 
+	operatorClient := api.NewJobServiceClient(operatorConn)
+
 	viewerTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
 		CertPath:   viewerCertPath,
 		KeyPath:    viewerKeyPath,
@@ -90,6 +92,8 @@ func setupTestServerAndClients(
 		t.Fatalf("viewer failed to connect: '%v'", err)
 	}
 
+	viewerClient := api.NewJobServiceClient(viewerConn)
+
 	go func() {
 		if err := s.start(listener); err != nil {
 			t.Logf("failed to start server: '%v'", err)
@@ -102,9 +106,6 @@ func setupTestServerAndClients(
 		operatorConn.Close()
 		viewerConn.Close()
 	}
-
-	operatorClient := api.NewJobServiceClient(operatorConn)
-	viewerClient := api.NewJobServiceClient(viewerConn)
 
 	return operatorClient, viewerClient, cleanup
 }
@@ -175,8 +176,7 @@ func waitForJobState(
 	return nil
 }
 
-// TODO: Add more individual tests to cover edge cases, error scenarios, and
-// full auth matrix.
+// TODO: Add more individual tests to cover edge cases and full auth matrix.
 
 func TestJobServerIntegrationAsOperator(t *testing.T) {
 	operatorClient, _, cleanup := setupTestServerAndClients(t)
@@ -441,4 +441,12 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 			Interrupted: false,
 		})
 	})
+}
+
+func TestJobServerIntegrationErrorScenarios(t *testing.T) {
+	// RunJob with empty program
+	// QueryJob with non-existent ID
+	// StopJob with non existent ID
+	// StreamJobOutput with non-existent ID
+
 }
