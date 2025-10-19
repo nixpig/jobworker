@@ -228,8 +228,9 @@ func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (any, error) {
-		if err := authorise(ctx, info.FullMethod, logger); err != nil {
-			return nil, err
+		if err := authorise(ctx, info.FullMethod); err != nil {
+			logger.Warn("failed to authorise client", "err", err)
+			return nil, status.Error(codes.PermissionDenied, "not authorised")
 		}
 
 		return handler(ctx, req)
@@ -244,8 +245,9 @@ func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		if err := authorise(ss.Context(), info.FullMethod, logger); err != nil {
-			return err
+		if err := authorise(ss.Context(), info.FullMethod); err != nil {
+			logger.Warn("failed to authorise client", "err", err)
+			return status.Error(codes.PermissionDenied, "not authorised")
 		}
 
 		return handler(srv, ss)

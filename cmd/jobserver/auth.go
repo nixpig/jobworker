@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 )
 
 type permission string
@@ -91,35 +88,17 @@ func isAuthorised(clientRole role, endpoint string) error {
 	return nil
 }
 
-func authorise(ctx context.Context, method string, logger *slog.Logger) error {
-	cn, ou, err := getClientIdentity(ctx)
+func authorise(ctx context.Context, method string) error {
+	_, ou, err := getClientIdentity(ctx)
 	if err != nil {
-		logger.Warn("failed to get client identity", "err", err)
-		return status.Error(codes.Unauthenticated, "not authenticated")
+		return fmt.Errorf("get client identity: %w", err)
 	}
 
 	clientRole := role(ou)
 
 	if err := isAuthorised(clientRole, method); err != nil {
-		logger.Warn(
-			"failed to authorise client",
-			"cn", cn,
-			"ou", ou,
-			"role", clientRole,
-			"method", method,
-			"err", err,
-		)
-
-		return status.Error(codes.PermissionDenied, "not authorised")
+		return fmt.Errorf("authorise client: %w", err)
 	}
-
-	logger.Debug(
-		"authorised client request",
-		"cn", cn,
-		"ou", ou,
-		"role", clientRole,
-		"method", method,
-	)
 
 	return nil
 }
