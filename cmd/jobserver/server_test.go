@@ -167,7 +167,7 @@ func TestJobServerIntegration(t *testing.T) {
 		_, err = client.StopJob(ctx, stopReq)
 		st, ok := status.FromError(err)
 		if !ok {
-			t.Fatal("expected gRPC status error")
+			t.Errorf("expected gRPC status error: got '%v'", err)
 		}
 
 		if st.Code() != codes.FailedPrecondition {
@@ -188,7 +188,6 @@ func TestJobServerIntegration(t *testing.T) {
 	})
 
 	t.Run("Test job output streaming", func(t *testing.T) {
-		// RunJob
 		runReq := &api.RunJobRequest{
 			Program: "echo",
 			Args:    []string{"Hello, world!"},
@@ -199,7 +198,6 @@ func TestJobServerIntegration(t *testing.T) {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
 
-		// StreamJobOutput
 		streamReq := &api.StreamJobOutputRequest{
 			Id: runResp.Id,
 		}
@@ -230,7 +228,7 @@ func TestJobServerIntegration(t *testing.T) {
 				"Hello, world!",
 			)
 		}
-		// QueryJob
+
 		queryReq := &api.QueryJobRequest{
 			Id: runResp.Id,
 		}
