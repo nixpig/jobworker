@@ -47,7 +47,7 @@ func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
 		},
 	)
 
-	tlsConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+	clientTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
 		CertPath:   clientCertPath,
 		KeyPath:    clientKeyPath,
 		CACertPath: caCertPath,
@@ -58,7 +58,7 @@ func setupTestClientAndServer(t *testing.T) (api.JobServiceClient, func()) {
 		t.Fatalf("failed to setup client TLS: '%v'", err)
 	}
 
-	creds := credentials.NewTLS(tlsConfig)
+	creds := credentials.NewTLS(clientTLSConfig)
 
 	conn, err := grpc.NewClient(
 		listener.Addr().String(),
