@@ -16,37 +16,37 @@ import (
 // all the permutations will test too long and these will be generally well
 // exercised by the server integration tests.
 
-type Permission string
+type permission string
 
 const (
-	PermissionJobStart  Permission = "job:start"
-	PermissionJobStop   Permission = "job:stop"
-	PermissionJobQuery  Permission = "job:query"
-	PermissionJobStream Permission = "job:stream"
+	permissionJobStart  permission = "job:start"
+	permissionJobStop   permission = "job:stop"
+	permissionJobQuery  permission = "job:query"
+	permissionJobStream permission = "job:stream"
 )
 
-type Role string
+type role string
 
 const (
-	RoleOperator Role = "operator"
-	RoleViewer   Role = "viewer"
+	roleOperator role = "operator"
+	roleViewer   role = "viewer"
 )
 
-var rolePermissions = map[Role][]Permission{
-	RoleOperator: {
-		PermissionJobStart,
-		PermissionJobStop,
-		PermissionJobQuery,
-		PermissionJobStream,
+var rolePermissions = map[role][]permission{
+	roleOperator: {
+		permissionJobStart,
+		permissionJobStop,
+		permissionJobQuery,
+		permissionJobStream,
 	},
-	RoleViewer: {PermissionJobQuery, PermissionJobStream},
+	roleViewer: {permissionJobQuery, permissionJobStream},
 }
 
-var endpointPermissions = map[string]Permission{
-	"/job.v1.JobService/RunJob":          PermissionJobStart,
-	"/job.v1.JobService/StopJob":         PermissionJobStop,
-	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
-	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
+var endpointPermissions = map[string]permission{
+	"/job.v1.JobService/RunJob":          permissionJobStart,
+	"/job.v1.JobService/StopJob":         permissionJobStop,
+	"/job.v1.JobService/QueryJob":        permissionJobQuery,
+	"/job.v1.JobService/StreamJobOutput": permissionJobStream,
 }
 
 func getClientIdentity(ctx context.Context) (string, string, error) {
@@ -77,13 +77,13 @@ func getClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-func isAuthorised(role Role, endpoint string) error {
+func isAuthorised(r role, endpoint string) error {
 	requiredPermissions, exists := endpointPermissions[endpoint]
 	if !exists {
 		return fmt.Errorf("specified endpoint not in endpoint permissions")
 	}
 
-	permissions, ok := rolePermissions[role]
+	permissions, ok := rolePermissions[r]
 	if !ok {
 		return fmt.Errorf("specified role not in role permissions")
 	}
@@ -102,14 +102,14 @@ func authorise(ctx context.Context, method string, logger *slog.Logger) error {
 		return status.Error(codes.Unauthenticated, "not authenticated")
 	}
 
-	role := Role(ou)
+	r := role(ou)
 
-	if err := isAuthorised(role, method); err != nil {
+	if err := isAuthorised(r, method); err != nil {
 		logger.Warn(
 			"failed to authorise client",
 			"cn", cn,
 			"ou", ou,
-			"role", role,
+			"role", r,
 			"method", method,
 			"err", err,
 		)
@@ -121,7 +121,7 @@ func authorise(ctx context.Context, method string, logger *slog.Logger) error {
 		"authorised client request",
 		"cn", cn,
 		"ou", ou,
-		"role", role,
+		"role", r,
 		"method", method,
 	)
 
