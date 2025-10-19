@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -31,7 +30,7 @@ type server struct {
 	logger     *slog.Logger
 	cfg        *config
 	grpcServer *grpc.Server
-	addr       net.Addr
+	addr       string
 }
 
 func newServer(
@@ -42,13 +41,7 @@ func newServer(
 	return &server{manager: manager, logger: logger, cfg: cfg}
 }
 
-func (s *server) start() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.port))
-	if err != nil {
-		return fmt.Errorf("listen failed: %w", err)
-	}
-
-	s.addr = listener.Addr()
+func (s *server) start(listener net.Listener) error {
 
 	tlsCreds, err := s.loadTLSCreds()
 	if err != nil {
@@ -64,6 +57,8 @@ func (s *server) start() error {
 	)
 
 	api.RegisterJobServiceServer(s.grpcServer, s)
+
+	s.addr = listener.Addr().String()
 
 	return s.grpcServer.Serve(listener)
 }
@@ -199,19 +194,16 @@ func (s *server) mapError(logMsg string, err error) error {
 
 // loadTLSCreds creates the gRPC transport credentials with mTLS enabled.
 func (s *server) loadTLSCreds() (credentials.TransportCredentials, error) {
-	cert, caPool, err := tlsconfig.LoadCertAndCA(
-		s.cfg.certPath,
-		s.cfg.keyPath,
-		s.cfg.caCertPath,
-	)
+	tlsConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+		CertPath:   s.cfg.certPath,
+		KeyPath:    s.cfg.keyPath,
+		CACertPath: s.cfg.caCertPath,
+		Server:     true,
+		ServerAddr: s.addr,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	tlsConfig := tlsconfig.BaseTLSConfig()
-	tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
-	tlsConfig.ClientCAs = caPool
-	tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 
 	return credentials.NewTLS(tlsConfig), nil
 }

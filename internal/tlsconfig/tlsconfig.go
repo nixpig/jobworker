@@ -7,40 +7,43 @@ import (
 	"os"
 )
 
-func BaseTLSConfig() *tls.Config {
-	return &tls.Config{
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: false,
-		Certificates:       []tls.Certificate{},
-	}
+type Config struct {
+	CertPath   string
+	KeyPath    string
+	CACertPath string
+	ServerAddr string
+	Server     bool
 }
 
-func LoadCertAndCA(
-	certPath, keyPath, caCertPath string,
-) (tls.Certificate, *x509.CertPool, error) {
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+func SetupTLS(config *Config) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
-		return tls.Certificate{}, nil, fmt.Errorf(
-			"failed to load certificate: %w",
-			err,
-		)
+		return nil, fmt.Errorf("failed to load certificate: %w", err)
 	}
 
-	caCert, err := os.ReadFile(caCertPath)
+	caCert, err := os.ReadFile(config.CACertPath)
 	if err != nil {
-		return tls.Certificate{}, nil, fmt.Errorf(
-			"failed to read CA certificate: %w",
-			err,
-		)
+		return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 	}
 
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return tls.Certificate{}, nil, fmt.Errorf(
-			"failed to parse CA certificate: %w",
-			err,
-		)
+		return nil, fmt.Errorf("failed to parse CA certificate: %w", err)
 	}
 
-	return cert, caCertPool, nil
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		InsecureSkipVerify: false,
+		ServerName:         config.ServerAddr,
+		Certificates:       []tls.Certificate{cert},
+	}
+
+	if config.Server {
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		tlsConfig.ClientCAs = caCertPool
+	} else {
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	return tlsConfig, nil
 }

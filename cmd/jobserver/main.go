@@ -5,7 +5,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,10 +40,16 @@ func main() {
 
 	server := newServer(manager, logger, cfg)
 
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.port))
+	if err != nil {
+		logger.Error("failed to create listener", "port", cfg.port, "err", err)
+		os.Exit(1)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("starting server", "port", cfg.port, "version", version)
-		errCh <- server.start()
+		errCh <- server.start(listener)
 	}()
 
 	ctx, cancel := signal.NotifyContext(
