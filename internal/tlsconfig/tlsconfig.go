@@ -13,8 +13,12 @@ type Config struct {
 	CertPath   string
 	KeyPath    string
 	CACertPath string
+	// ServerName is the hostname to verify when connecting as a client. Only
+	// used when Server is `false`.
 	ServerName string
-	Server     bool
+	// Server indicates whether to configure TLS for a server (`true`) or a
+	// client (`false`).
+	Server bool
 }
 
 // TODO: Add unit tests for production solution. For this prototype, I think
