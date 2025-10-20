@@ -1,0 +1,321 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"syscall"
+	"text/tabwriter"
+
+	api "github.com/nixpig/jobworker/api/v1"
+	"github.com/nixpig/jobworker/internal/tlsconfig"
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
+)
+
+// TODO: Inject version at build time.
+const version = "0.0.1"
+
+// TODO: Consider introducing config management like Viper.
+type config struct {
+	serverHostname string
+	serverPort     uint16
+	caCertPath     string
+	certPath       string
+	keyPath        string
+}
+
+type cli struct {
+	client api.JobServiceClient
+	conn   *grpc.ClientConn
+}
+
+func newCLI() *cli {
+	return &cli{}
+}
+
+// TODO: Consider adding integration tests (not done for this prototype as
+// already have pretty comprehensive integration tests for the server).
+// Unit tests for the CLI would be so shallow (just testing Cobra/gRPC) not
+// really adding any value.
+func (c *cli) rootCmd() *cobra.Command {
+	cfg := &config{}
+
+	command := &cobra.Command{
+		Use:          "jobctl",
+		Short:        "CLI for interacting with jobworker server",
+		Version:      version,
+		SilenceUsage: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			tlsConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
+				CertPath:   cfg.certPath,
+				KeyPath:    cfg.keyPath,
+				CACertPath: cfg.caCertPath,
+				ServerName: cfg.serverHostname,
+				Server:     false,
+			})
+			if err != nil {
+				return err
+			}
+
+			c.conn, err = grpc.NewClient(
+				fmt.Sprintf("%s:%d", cfg.serverHostname, cfg.serverPort),
+				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
+			)
+			if err != nil {
+				return err
+			}
+
+			c.client = api.NewJobServiceClient(c.conn)
+
+			return nil
+		},
+		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			if c.conn == nil {
+				return nil
+			}
+
+			// Connection needs to remain open for duration of any child commands.
+			return c.conn.Close()
+		},
+	}
+
+	command.AddCommand(
+		c.startCmd(),
+		c.stopCmd(),
+		c.statusCmd(),
+		c.streamCmd(),
+	)
+
+	command.CompletionOptions.HiddenDefaultCmd = true
+
+	command.PersistentFlags().StringVar(
+		&cfg.serverHostname,
+		"server-hostname",
+		"localhost",
+		"Server hostname",
+	)
+
+	command.PersistentFlags().Uint16Var(
+		&cfg.serverPort,
+		"server-port",
+		8443,
+		"Server port",
+	)
+
+	command.PersistentFlags().StringVar(
+		&cfg.certPath,
+		"cert-path",
+		"certs/client-operator.crt",
+		"Path to client TLS certificate",
+	)
+
+	command.PersistentFlags().StringVar(
+		&cfg.keyPath,
+		"key-path",
+		"certs/client-operator.key",
+		"Path to client TLS private key",
+	)
+
+	command.PersistentFlags().StringVar(
+		&cfg.caCertPath,
+		"ca-cert-path",
+		"certs/ca.crt",
+		"Path to CA certificate for mTLS",
+	)
+
+	return command
+}
+
+func (c *cli) startCmd() *cobra.Command {
+	command := &cobra.Command{
+		Use:     "start [flags] JOB_PROGRAM [JOB_ARGS]",
+		Short:   "Start a new job",
+		Example: "  jobctl start tail -f server.log",
+		Args:    cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			program := args[0]
+			arguments := args[1:]
+
+			res, err := c.client.RunJob(
+				cmd.Context(),
+				&api.RunJobRequest{
+					Program: program,
+					Args:    arguments,
+				},
+			)
+			if err != nil {
+				return mapError(err)
+			}
+
+			cmd.OutOrStdout().Write(fmt.Appendf(nil, "%s\n", res.Id))
+
+			return nil
+		},
+	}
+
+	// Stop parsing args after first position so that flags passed to the program
+	// to run are not interpreted by the jobctl CLI and are passed as-is,
+	// e.g. `jobctl start tail -f server.log`
+	command.Flags().SetInterspersed(false)
+
+	return command
+}
+
+func (c *cli) statusCmd() *cobra.Command {
+	command := &cobra.Command{
+		Use:     "status [flags] JOB_ID",
+		Short:   "Query status of job",
+		Example: "  jobctl status 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			res, err := c.client.QueryJob(
+				cmd.Context(),
+				&api.QueryJobRequest{Id: id},
+			)
+			if err != nil {
+				return mapError(err)
+			}
+
+			// TODO: Only output headers if TTY. Or could add a flag like --plain or
+			// --skip-headers to hide headers.
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+
+			fmt.Fprintf(w, "STATE\tEXIT CODE\tSIGNAL\tINTERRUPTED\n")
+			fmt.Fprintf(
+				w,
+				"%s\t%d\t%s\t%t\n",
+				mapState(res.State),
+				res.ExitCode,
+				res.Signal,
+				res.Interrupted,
+			)
+
+			w.Flush()
+
+			return nil
+		},
+	}
+
+	return command
+}
+
+func (c *cli) stopCmd() *cobra.Command {
+	command := &cobra.Command{
+		Use:     "stop [flags] JOB_ID",
+		Short:   "Stop a running job",
+		Example: "  jobctl stop 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			if _, err := c.client.StopJob(
+				cmd.Context(),
+				&api.StopJobRequest{Id: id},
+			); err != nil {
+				return mapError(err)
+			}
+
+			return nil
+		},
+	}
+
+	return command
+}
+
+func (c *cli) streamCmd() *cobra.Command {
+	command := &cobra.Command{
+		Use:     "stream [flags] JOB_ID",
+		Short:   "Stream job output",
+		Example: "  jobctl stream 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			ctx, cancel := signal.NotifyContext(
+				cmd.Context(),
+				syscall.SIGTERM,
+				os.Interrupt,
+			)
+			defer cancel()
+
+			stream, err := c.client.StreamJobOutput(
+				ctx,
+				&api.StreamJobOutputRequest{Id: id},
+			)
+			if err != nil {
+				return mapError(err)
+			}
+
+			for {
+				res, err := stream.Recv()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+
+					if status.Code(err) == codes.Canceled {
+						break
+					}
+
+					return mapError(err)
+				}
+
+				cmd.OutOrStdout().Write(res.Output)
+			}
+
+			return nil
+		},
+	}
+
+	return command
+}
+
+// mapError translates gRPC errors to human-readable messages.
+func mapError(err error) error {
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+
+	switch st.Code() {
+	case codes.NotFound:
+		return fmt.Errorf("not found")
+	case codes.PermissionDenied:
+		return fmt.Errorf("permission denied")
+	case codes.Unauthenticated:
+		return fmt.Errorf("not authenticated")
+	case codes.InvalidArgument:
+		return fmt.Errorf("%s", st.Message())
+	case codes.Unavailable:
+		return fmt.Errorf("server unavailable")
+	default:
+		return fmt.Errorf("%s", st.Message())
+	}
+}
+
+// mapState translates gRPC JobState enum values to human-readable strings.
+func mapState(state api.JobState) string {
+	switch state {
+	case api.JobState_JOB_STATE_CREATED:
+		return "Created"
+	case api.JobState_JOB_STATE_STARTING:
+		return "Starting"
+	case api.JobState_JOB_STATE_STARTED:
+		return "Started"
+	case api.JobState_JOB_STATE_STOPPING:
+		return "Stopping"
+	case api.JobState_JOB_STATE_STOPPED:
+		return "Stopped"
+	case api.JobState_JOB_STATE_FAILED:
+		return "Failed"
+	default:
+		return "Unknown"
+	}
+}

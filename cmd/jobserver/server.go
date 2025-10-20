@@ -99,7 +99,7 @@ func (s *server) RunJob(
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
 	if req.Program == "" {
-		return nil, status.Error(codes.InvalidArgument, "program is empty")
+		return nil, status.Error(codes.InvalidArgument, "Program is empty")
 	}
 
 	id, err := s.manager.RunJob(req.Program, req.Args)
@@ -115,7 +115,7 @@ func (s *server) StopJob(
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is empty")
+		return nil, status.Error(codes.InvalidArgument, "ID is empty")
 	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
@@ -130,7 +130,7 @@ func (s *server) QueryJob(
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is empty")
+		return nil, status.Error(codes.InvalidArgument, "ID is empty")
 	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
@@ -156,7 +156,7 @@ func (s *server) StreamJobOutput(
 	stream api.JobService_StreamJobOutputServer,
 ) error {
 	if req.Id == "" {
-		return status.Error(codes.InvalidArgument, "id is empty")
+		return status.Error(codes.InvalidArgument, "ID is empty")
 	}
 
 	// TODO: If we end up with more than one streaming method then create an
