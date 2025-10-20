@@ -182,8 +182,11 @@ func (s *server) StreamJobOutput(
 		}
 	}()
 
+	ctx, cancel := context.WithCancel(stream.Context())
+	defer cancel()
+
 	go func() {
-		<-stream.Context().Done()
+		<-ctx.Done()
 
 		if err := outputReader.Close(); err != nil {
 			s.logger.Warn(
