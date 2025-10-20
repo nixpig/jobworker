@@ -13,7 +13,7 @@ type Config struct {
 	CertPath   string
 	KeyPath    string
 	CACertPath string
-	ServerAddr string
+	ServerName string
 	Server     bool
 }
 
@@ -42,7 +42,6 @@ func SetupTLS(config *Config) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS13,
 		InsecureSkipVerify: false,
-		ServerName:         config.ServerAddr,
 		Certificates:       []tls.Certificate{cert},
 	}
 
@@ -51,6 +50,7 @@ func SetupTLS(config *Config) (*tls.Config, error) {
 		tlsConfig.ClientCAs = caCertPool
 	} else {
 		tlsConfig.RootCAs = caCertPool
+		tlsConfig.ServerName = config.ServerName
 	}
 
 	return tlsConfig, nil

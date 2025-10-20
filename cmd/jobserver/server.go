@@ -49,7 +49,6 @@ func (s *server) start(listener net.Listener) error {
 		KeyPath:    s.cfg.keyPath,
 		CACertPath: s.cfg.caCertPath,
 		Server:     true,
-		ServerAddr: s.addr,
 	})
 	if err != nil {
 		return fmt.Errorf("setup TLS config: %w", err)

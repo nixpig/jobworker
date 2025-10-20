@@ -57,7 +57,7 @@ func setupTestServerAndClients(
 		KeyPath:    operatorKeyPath,
 		CACertPath: caCertPath,
 		Server:     false,
-		ServerAddr: listener.Addr().String(),
+		ServerName: "localhost",
 	})
 	if err != nil {
 		t.Fatalf("failed to setup operator TLS: '%v'", err)
@@ -78,7 +78,7 @@ func setupTestServerAndClients(
 		KeyPath:    viewerKeyPath,
 		CACertPath: caCertPath,
 		Server:     false,
-		ServerAddr: listener.Addr().String(),
+		ServerName: "localhost",
 	})
 	if err != nil {
 		t.Fatalf("failed to setup viewer TLS: '%v'", err)
@@ -142,6 +142,23 @@ func testJobStatus(
 			"expected signal: got '%s', want '%s'",
 			got.Signal,
 			want.Signal,
+		)
+	}
+}
+
+func testGRPCStatus(t *testing.T, err error, want codes.Code) {
+	t.Helper()
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Errorf("expected gRPC status error: got '%v'", err)
+	}
+
+	if st.Code() != want {
+		t.Errorf(
+			"expected gRPC status error: got '%v', want '%v'",
+			st.Code(),
+			want,
 		)
 	}
 }
@@ -226,14 +243,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		// Try stopping an already stopped job
 		_, err = operatorClient.StopJob(ctx, stopReq)
-		st, ok := status.FromError(err)
-		if !ok {
-			t.Errorf("expected gRPC status error: got '%v'", err)
-		}
-
-		if st.Code() != codes.FailedPrecondition {
-			t.Errorf("expected FailedPrecondition error: got '%v'", st.Code())
-		}
+		testGRPCStatus(t, err, codes.FailedPrecondition)
 
 		jobStatus := waitForJobState(
 			t,
@@ -330,14 +340,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		}
 
 		_, err := viewerClient.RunJob(ctx, runReq)
-		st, ok := status.FromError(err)
-		if !ok {
-			t.Errorf("expected gRPC status error: got '%v'", err)
-		}
-
-		if st.Code() != codes.PermissionDenied {
-			t.Errorf("expected PermissionDenied error: got '%v'", st.Code())
-		}
+		testGRPCStatus(t, err, codes.PermissionDenied)
 
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
@@ -369,14 +372,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		}
 
 		_, err = viewerClient.StopJob(ctx, stopReq)
-		st, ok = status.FromError(err)
-		if !ok {
-			t.Errorf("expected gRPC status error: got '%v'", err)
-		}
-
-		if st.Code() != codes.PermissionDenied {
-			t.Errorf("expected PermissionDenied error: got '%v'", st.Code())
-		}
+		testGRPCStatus(t, err, codes.PermissionDenied)
 	})
 
 	t.Run("Test job output streaming", func(t *testing.T) {
@@ -444,9 +440,50 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 }
 
 func TestJobServerIntegrationErrorScenarios(t *testing.T) {
-	// RunJob with empty program
-	// QueryJob with non-existent ID
-	// StopJob with non existent ID
-	// StreamJobOutput with non-existent ID
+	operatorClient, _, cleanup := setupTestServerAndClients(t)
+	defer cleanup()
 
+	ctx := context.Background()
+
+	t.Run("Test RunJob with empty program", func(t *testing.T) {
+		req := &api.RunJobRequest{
+			Program: "",
+			Args:    []string{},
+		}
+
+		_, err := operatorClient.RunJob(ctx, req)
+		testGRPCStatus(t, err, codes.InvalidArgument)
+	})
+
+	t.Run("Test QueryJob with non-existent ID", func(t *testing.T) {
+		req := &api.QueryJobRequest{
+			Id: "some-non-existent-id",
+		}
+
+		_, err := operatorClient.QueryJob(ctx, req)
+		testGRPCStatus(t, err, codes.NotFound)
+	})
+
+	t.Run("Test StopJob with non-existent ID", func(t *testing.T) {
+		req := &api.StopJobRequest{
+			Id: "some-non-existent-id",
+		}
+
+		_, err := operatorClient.StopJob(ctx, req)
+		testGRPCStatus(t, err, codes.NotFound)
+	})
+
+	t.Run("Test StreamJobOutput with non-existent ID", func(t *testing.T) {
+		req := &api.StreamJobOutputRequest{
+			Id: "some-non-existent-id",
+		}
+
+		stream, err := operatorClient.StreamJobOutput(ctx, req)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		_, err = stream.Recv()
+		testGRPCStatus(t, err, codes.NotFound)
+	})
 }
