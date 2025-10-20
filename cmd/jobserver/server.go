@@ -174,7 +174,23 @@ func (s *server) StreamJobOutput(
 
 	defer func() {
 		if err := outputReader.Close(); err != nil {
-			s.logger.Warn("close output reader", "id", req.Id, "err", err)
+			s.logger.Warn(
+				"close output reader in defer",
+				"id", req.Id,
+				"err", err,
+			)
+		}
+	}()
+
+	go func() {
+		<-stream.Context().Done()
+
+		if err := outputReader.Close(); err != nil {
+			s.logger.Warn(
+				"close output reader on context cancel",
+				"id", req.Id,
+				"err", err,
+			)
 		}
 	}()
 
