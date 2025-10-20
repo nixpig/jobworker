@@ -21,7 +21,7 @@ const (
 	PermissionJobStream Permission = "job:stream"
 )
 
-// Role is used to determine what collection of Permissions a client has.
+// Role is used to determine what collection of permissions a client has.
 type Role string
 
 const (
@@ -29,6 +29,7 @@ const (
 	RoleViewer   Role = "viewer"
 )
 
+// rolePermissions defines what permissions each role has.
 var rolePermissions = map[Role][]Permission{
 	RoleOperator: {
 		PermissionJobStart,
@@ -39,6 +40,7 @@ var rolePermissions = map[Role][]Permission{
 	RoleViewer: {PermissionJobQuery, PermissionJobStream},
 }
 
+// methodPermissions maps gRPC methods to the required Permission.
 var methodPermissions = map[string]Permission{
 	"/job.v1.JobService/RunJob":          PermissionJobStart,
 	"/job.v1.JobService/StopJob":         PermissionJobStop,
@@ -46,8 +48,13 @@ var methodPermissions = map[string]Permission{
 	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
-// GetClientIdentity extracts the Common Name (CN) and OrganizationalUnit (OU)
-// fields from a client's mTLS certificate on the given gRPC context.
+// TODO: Add unit tests for production solution. Currently relying on
+// integration tests which exercise all code paths, but take longer to run and
+// don't cover all the potential edge cases.
+
+// GetClientIdentity extracts and returns the Common Name (CN) and
+// OrganizationalUnit (OU) fields from a client's mTLS certificate on the given
+// gRPC context
 func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
