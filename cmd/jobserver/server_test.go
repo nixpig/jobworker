@@ -29,6 +29,9 @@ const (
 	viewerKeyPath    = "../../certs/client-viewer.key"
 )
 
+// setupTestServerAndClients starts a test server and returns an operator
+// client, a viewer client, and a cleanup function to shutdown the server and
+// close the clients.
 func setupTestServerAndClients(
 	t *testing.T,
 ) (api.JobServiceClient, api.JobServiceClient, func()) {
@@ -193,8 +196,6 @@ func waitForJobState(
 	return nil
 }
 
-// TODO: Add more individual tests to cover edge cases and full auth matrix.
-
 func TestJobServerIntegrationAsOperator(t *testing.T) {
 	operatorClient, _, cleanup := setupTestServerAndClients(t)
 	defer cleanup()
@@ -207,6 +208,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Args:    []string{"30"},
 		}
 
+		// Operator used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
@@ -342,6 +344,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		_, err := viewerClient.RunJob(ctx, runReq)
 		testGRPCStatus(t, err, codes.PermissionDenied)
 
+		// Operator client used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)

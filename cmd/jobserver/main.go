@@ -61,7 +61,6 @@ func main() {
 		logger.Info("shutting down server")
 		server.shutdown()
 		manager.Shutdown()
-		cancel()
 	}
 
 	logger.Info("server shutdown cleanly")
