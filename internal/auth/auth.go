@@ -21,7 +21,7 @@ const (
 	PermissionJobStream Permission = "job:stream"
 )
 
-// Role is used to determine what collection of permissions a client has.
+// Role is used to determine what collection of Permissions a client has.
 type Role string
 
 const (
@@ -29,7 +29,7 @@ const (
 	RoleViewer   Role = "viewer"
 )
 
-// rolePermissions defines what permissions each role has.
+// rolePermissions defines what Permissions each Role has.
 var rolePermissions = map[Role][]Permission{
 	RoleOperator: {
 		PermissionJobStart,
@@ -83,7 +83,7 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	return cn, ou, nil
 }
 
-// IsAuthorised checks if the given role has permission to access the given
+// IsAuthorised checks if the given Role has Permission to access the given
 // gRPC method. Returns nil if authorised, or error if not.
 func IsAuthorised(role Role, method string) error {
 	requiredPermissions, exists := methodPermissions[method]
@@ -103,7 +103,7 @@ func IsAuthorised(role Role, method string) error {
 	return nil
 }
 
-// Authorise verifies that the client in the gRPC context has permission to
+// Authorise verifies that the client in the gRPC context has permissions to
 // call the given method.
 func Authorise(ctx context.Context, method string) error {
 	_, ou, err := GetClientIdentity(ctx)
