@@ -208,7 +208,6 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Args:    []string{"30"},
 		}
 
-		// Operator used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
@@ -384,6 +383,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 			Args:    []string{"Hello, world!"},
 		}
 
+		// Operator used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
