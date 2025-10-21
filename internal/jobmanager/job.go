@@ -81,10 +81,23 @@ func NewJob(
 
 // Start starts the Job. Trying to start a Job that is not in JobStateCreated
 // returns an InvalidStateError.
-func (j *Job) Start() error {
+func (j *Job) Start() (err error) {
 	if !j.state.CompareAndSwap(JobStateCreated, (JobStateStarting)) {
 		return NewInvalidStateError(j.state.Load(), JobStateStarting)
 	}
+
+	defer func() {
+		if err != nil {
+			j.state.Store(JobStateFailed)
+			j.pipeWriter.Close()
+
+			if j.cgroup != nil {
+				j.cgroup.Destroy()
+			}
+
+			close(j.done)
+		}
+	}()
 
 	cg, err := cgroups.CreateCgroup(j.cgroupRoot, "job-manager-"+j.id, j.limits)
 	if err != nil {
@@ -99,14 +112,11 @@ func (j *Job) Start() error {
 		CgroupFD:    int(fd.Fd()),
 	}
 
-	if err := j.cmd.Start(); err != nil {
-		j.state.Store(JobStateFailed)
-		j.pipeWriter.Close()
-		j.cgroup.Destroy()
-
+	if err = j.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
+	j.cgroup.CloseFD()
 	j.pipeWriter.Close()
 	j.state.Store(JobStateStarted)
 
@@ -115,8 +125,8 @@ func (j *Job) Start() error {
 
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
-
 		j.cgroup.Destroy()
+
 		close(j.done)
 	}()
 

@@ -134,13 +134,18 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
+// CloseFD closes the file descriptor of the cgroup.
+func (c *Cgroup) CloseFD() error {
+	return c.close()
+}
+
 // Destroy attempts to close the cgroup file descriptor then removes the cgroup
 // directory.
 func (c *Cgroup) Destroy() error {
 	// Ignore close error and just go ahead and remove. Perhaps log in future.
 	c.close()
 
-	if err := os.RemoveAll(c.path); err != nil {
+	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove cgroup: %w", err)
 	}
 
