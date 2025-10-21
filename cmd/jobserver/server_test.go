@@ -42,13 +42,14 @@ func setupTestServerAndClients(
 		t.Fatalf("failed to setup listener: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		listener.Close()
+	})
+
 	manager, err := jobmanager.NewManagerWithDefaults()
 	if err != nil {
 		t.Errorf("expected not to get error: got '%v'", err)
 	}
-	t.Cleanup(func() {
-		listener.Close()
-	})
 
 	t.Cleanup(func() {
 		manager.Shutdown()
