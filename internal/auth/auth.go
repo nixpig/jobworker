@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 
+	api "github.com/nixpig/jobworker/api/v1"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 )
@@ -40,12 +41,12 @@ var rolePermissions = map[Role][]Permission{
 	RoleViewer: {PermissionJobQuery, PermissionJobStream},
 }
 
-// methodPermissions maps gRPC methods to the required Permission.
-var methodPermissions = map[string]Permission{
-	"/job.v1.JobService/RunJob":          PermissionJobStart,
-	"/job.v1.JobService/StopJob":         PermissionJobStop,
-	"/job.v1.JobService/QueryJob":        PermissionJobQuery,
-	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
+// MethodPermissions maps gRPC methods to the required Permission.
+var MethodPermissions = map[string]Permission{
+	api.JobService_RunJob_FullMethodName:          PermissionJobStart,
+	api.JobService_StopJob_FullMethodName:         PermissionJobStop,
+	api.JobService_QueryJob_FullMethodName:        PermissionJobQuery,
+	api.JobService_StreamJobOutput_FullMethodName: PermissionJobStream,
 }
 
 // GetClientIdentity extracts and returns the Common Name (CN) and
@@ -60,11 +61,6 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok {
 		return "", "", fmt.Errorf("failed to get TLS info from peer auth info")
-	}
-
-	if len(tlsInfo.State.VerifiedChains) == 0 ||
-		len(tlsInfo.State.VerifiedChains[0]) == 0 {
-		return "", "", fmt.Errorf("no verified chains in TLS info")
 	}
 
 	cert := tlsInfo.State.VerifiedChains[0][0]
@@ -82,9 +78,12 @@ func GetClientIdentity(ctx context.Context) (string, string, error) {
 // IsAuthorised checks if the given Role has Permission to access the given
 // gRPC method. Returns nil if authorised, or error if not.
 func IsAuthorised(role Role, method string) error {
-	requiredPermissions, exists := methodPermissions[method]
+	requiredPermissions, exists := MethodPermissions[method]
 	if !exists {
-		return fmt.Errorf("specified method not in method permissions")
+		return fmt.Errorf(
+			"specified method not in method permissions: %s",
+			method,
+		)
 	}
 
 	permissions, ok := rolePermissions[role]

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"log/slog"
 	"net"
@@ -35,7 +34,7 @@ const (
 // close the clients.
 func setupTestServerAndClients(
 	t *testing.T,
-) (api.JobServiceClient, api.JobServiceClient, func()) {
+) (api.JobServiceClient, api.JobServiceClient) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -47,6 +46,13 @@ func setupTestServerAndClients(
 	if err != nil {
 		t.Errorf("expected not to get error: got '%v'", err)
 	}
+	t.Cleanup(func() {
+		listener.Close()
+	})
+
+	t.Cleanup(func() {
+		manager.Shutdown()
+	})
 
 	s := newServer(
 		manager,
@@ -78,6 +84,10 @@ func setupTestServerAndClients(
 		t.Fatalf("operator failed to connect: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		operatorConn.Close()
+	})
+
 	operatorClient := api.NewJobServiceClient(operatorConn)
 
 	viewerTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
@@ -99,6 +109,10 @@ func setupTestServerAndClients(
 		t.Fatalf("viewer failed to connect: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		viewerConn.Close()
+	})
+
 	viewerClient := api.NewJobServiceClient(viewerConn)
 
 	go func() {
@@ -107,14 +121,11 @@ func setupTestServerAndClients(
 		}
 	}()
 
-	cleanup := func() {
+	t.Cleanup(func() {
 		s.shutdown()
-		manager.Shutdown()
-		operatorConn.Close()
-		viewerConn.Close()
-	}
+	})
 
-	return operatorClient, viewerClient, cleanup
+	return operatorClient, viewerClient
 }
 
 func testJobStatus(
@@ -180,7 +191,7 @@ func waitForJobState(
 ) *api.QueryJobResponse {
 	t.Helper()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
@@ -201,10 +212,9 @@ func waitForJobState(
 }
 
 func TestJobServerIntegrationAsOperator(t *testing.T) {
-	operatorClient, _, cleanup := setupTestServerAndClients(t)
-	defer cleanup()
+	operatorClient, _ := setupTestServerAndClients(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("Test job lifecycle", func(t *testing.T) {
 		runReq := &api.RunJobRequest{
@@ -371,10 +381,9 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 }
 
 func TestJobServerIntegrationAsViewer(t *testing.T) {
-	operatorClient, viewerClient, cleanup := setupTestServerAndClients(t)
-	defer cleanup()
+	operatorClient, viewerClient := setupTestServerAndClients(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("Test job lifecycle", func(t *testing.T) {
 		runReq := &api.RunJobRequest{
@@ -485,10 +494,9 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 }
 
 func TestJobServerIntegrationErrorScenarios(t *testing.T) {
-	operatorClient, _, cleanup := setupTestServerAndClients(t)
-	defer cleanup()
+	operatorClient, _ := setupTestServerAndClients(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("Test RunJob with empty program", func(t *testing.T) {
 		req := &api.RunJobRequest{

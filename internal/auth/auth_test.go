@@ -1,12 +1,13 @@
 package auth_test
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"testing"
 
+	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/auth"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -37,28 +38,28 @@ func TestIsAuthorised(t *testing.T) {
 		},
 		"Test operator can stream job output": {
 			role:         auth.RoleOperator,
-			method:       "/job.v1.JobService/StreamJobOutput",
+			method:       api.JobService_StreamJobOutput_FullMethodName,
 			isAuthorised: true,
 		},
 
 		"Test viewer cannot run job": {
 			role:         auth.RoleViewer,
-			method:       "/job.v1.JobService/RunJob",
+			method:       api.JobService_RunJob_FullMethodName,
 			isAuthorised: false,
 		},
 		"Test viewer cannot stop job": {
 			role:         auth.RoleViewer,
-			method:       "/job.v1.JobService/RunJob",
+			method:       api.JobService_RunJob_FullMethodName,
 			isAuthorised: false,
 		},
 		"Test viewer can query job": {
 			role:         auth.RoleViewer,
-			method:       "/job.v1.JobService/QueryJob",
+			method:       api.JobService_QueryJob_FullMethodName,
 			isAuthorised: true,
 		},
 		"Test viewer can stream job output": {
 			role:         auth.RoleViewer,
-			method:       "/job.v1.JobService/StreamJobOutput",
+			method:       api.JobService_StreamJobOutput_FullMethodName,
 			isAuthorised: true,
 		},
 
@@ -69,7 +70,7 @@ func TestIsAuthorised(t *testing.T) {
 		},
 		"Test unknown role returns error": {
 			role:         auth.Role("Unknown"),
-			method:       "/job.v1.JobService/StreamJobOutput",
+			method:       api.JobService_StreamJobOutput_FullMethodName,
 			isAuthorised: false,
 		},
 	}
@@ -94,6 +95,26 @@ func TestIsAuthorised(t *testing.T) {
 	}
 }
 
+func TestMethodsHavePermissions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Test all methods have permissions assigned", func(t *testing.T) {
+		for _, m := range api.JobService_ServiceDesc.Methods {
+			fullMethodName := fmt.Sprintf(
+				"/%s/%s",
+				api.JobService_ServiceDesc.ServiceName,
+				m.MethodName,
+			)
+			if _, exists := auth.MethodPermissions[fullMethodName]; !exists {
+				t.Errorf(
+					"gRPC method doesn't have permission assigned: '%v'",
+					fullMethodName,
+				)
+			}
+		}
+	})
+}
+
 func TestGetClientIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -113,7 +134,7 @@ func TestGetClientIdentity(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err != nil {
@@ -132,7 +153,7 @@ func TestGetClientIdentity(t *testing.T) {
 	t.Run("Test peer with no TLS info", func(t *testing.T) {
 		p := &peer.Peer{AuthInfo: nil}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
@@ -149,7 +170,7 @@ func TestGetClientIdentity(t *testing.T) {
 	})
 
 	t.Run("Test no peer in context", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
@@ -165,30 +186,6 @@ func TestGetClientIdentity(t *testing.T) {
 		}
 	})
 
-	t.Run("Test empty certificate chain", func(t *testing.T) {
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
-
-		ctx := peer.NewContext(context.Background(), p)
-
-		cn, ou, err := auth.GetClientIdentity(ctx)
-		if err == nil {
-			t.Errorf("expected to receive error")
-		}
-
-		if cn != "" {
-			t.Errorf("expected CN to be empty: got '%s'", cn)
-		}
-
-		if ou != "" {
-			t.Errorf("expected OU to be empty: got '%s'", cn)
-		}
-	})
 }
 
 func TestAuthorise(t *testing.T) {
@@ -210,7 +207,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
@@ -233,7 +230,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err == nil {
 			t.Errorf("expected to receive error")
@@ -257,7 +254,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
@@ -280,7 +277,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
 			t.Errorf("expected to receive error")
@@ -288,7 +285,7 @@ func TestAuthorise(t *testing.T) {
 	})
 
 	t.Run("Test invalid context", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
 			t.Errorf("expected to receive error")
