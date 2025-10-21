@@ -43,11 +43,21 @@ type Cgroup struct {
 // CreateCgroup creates a new cgroup at the given root path with the given name
 // and limits. It returns a Cgroup with a file descriptor for atomic placement
 // using SysProcAttr.CgroupFD.
-func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
+func CreateCgroup(
+	root, name string,
+	limits *ResourceLimits,
+) (cg *Cgroup, err error) {
 	// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
-	// Values are currently hard-coded, so omitting validation for the prototype.
+	// Values are currently hard-coded in server.go, so omitting validation for
+	// the prototype.
 
-	cg := &Cgroup{
+	defer func() {
+		if err != nil {
+			os.RemoveAll(cg.path)
+		}
+	}()
+
+	cg = &Cgroup{
 		name: name,
 		path: filepath.Join(root, name),
 	}
@@ -58,14 +68,12 @@ func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
 
 	if limits != nil {
 		if err := cg.applyLimits(limits); err != nil {
-			os.RemoveAll(cg.path)
 			return nil, fmt.Errorf("apply cgroup limits: %w", err)
 		}
 	}
 
 	fd, err := os.Open(cg.path)
 	if err != nil {
-		os.RemoveAll(cg.path)
 		return nil, fmt.Errorf("open cgroup dir: %w", err)
 	}
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/casbin/casbin/errors"
 	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"github.com/spf13/cobra"
@@ -287,15 +289,15 @@ func mapError(err error) error {
 
 	switch st.Code() {
 	case codes.NotFound:
-		return fmt.Errorf("not found")
+		return errors.New("not found")
 	case codes.PermissionDenied:
-		return fmt.Errorf("permission denied")
+		return errors.New("permission denied")
 	case codes.Unauthenticated:
-		return fmt.Errorf("not authenticated")
+		return errors.New("not authenticated")
 	case codes.InvalidArgument:
 		return fmt.Errorf("%s", st.Message())
 	case codes.Unavailable:
-		return fmt.Errorf("server unavailable")
+		return errors.New("server unavailable")
 	default:
 		return fmt.Errorf("%s", st.Message())
 	}

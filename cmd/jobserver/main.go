@@ -37,7 +37,7 @@ func run() error {
 	manager, err := jobmanager.NewManagerWithDefaults()
 	if err != nil {
 		logger.Error("failed to create manager with cgroups", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create manager with cgroups: %w", err)
 	}
 
 	server := newServer(manager, logger, cfg)
