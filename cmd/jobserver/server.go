@@ -107,7 +107,7 @@ func (s *server) RunJob(
 	id, err := s.manager.RunJob(
 		req.Program,
 		req.Args,
-		// TODO: Make resource limits configurable.
+		// TODO: Make resource limits configurable via server config.
 		&cgroups.ResourceLimits{
 			CPUMaxPercent:  50,
 			MemoryMaxBytes: 536870912,

@@ -19,7 +19,7 @@ audit:
 
 .PHONY: coverage
 coverage:
-	go test -buildvcs -coverprofile=coverage.out ./... \
+	sudo -E go test -buildvcs -coverprofile=coverage.out ./... \
 		&& go tool cover -html=coverage.out
 
 .PHONY: clean

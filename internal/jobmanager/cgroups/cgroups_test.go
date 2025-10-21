@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -91,32 +90,6 @@ func TestCgroups(t *testing.T) {
 				"expected io.max: got '%s', want '%s'",
 				gotIOLimit, wantIOLimit,
 			)
-		}
-
-		pid := os.Getpid()
-		if err := cgroup.Join(pid); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
-		}
-
-		procsData, err := os.ReadFile(
-			filepath.Join(cgroup.Path(), "cgroup.procs"),
-		)
-		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
-		}
-
-		gotProcsData := string(bytes.TrimSpace(procsData))
-		if gotProcsData != strconv.Itoa(pid) {
-			t.Errorf(
-				"expected procs data: got '%v', want '%d'",
-				gotProcsData,
-				pid,
-			)
-		}
-
-		rootProcs := filepath.Join(cgroupRoot, "cgroup.procs")
-		if err := os.WriteFile(rootProcs, []byte(strconv.Itoa(pid)), 0644); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
 		}
 
 		if err := cgroup.Destroy(); err != nil {

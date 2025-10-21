@@ -1,6 +1,9 @@
+// Package cgroups provides utilities for managing cgroups v2 limits for CPU,
+// memory and disk I/O.
 package cgroups
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,22 +12,37 @@ import (
 )
 
 const (
+	// DefaultMountPoint is the default mount point for the root control group.
+	// This is a reasonable assumption, but not guaranteed to be correct. In a
+	// production-ready solution we'd need to reliably determine this instead of
+	// hard-coding it.
+	DefaultMountPoint = "/sys/fs/cgroup"
+
 	cpuPeriodMicros = 100000
 	procMountinfo   = "/proc/self/mountinfo"
 )
 
+// ResourceLimits are the limits applied to a cgroup. Zero for any resource
+// means no limit will be applied for that resource.
 type ResourceLimits struct {
-	CPUMaxPercent  int64
+	// CPUMaxPercent limits CPU usage to the given percentage, e.g. 50 = 50%.
+	CPUMaxPercent int64
+	// MemoryMaxBytes limits memory usage by the given bytes.
 	MemoryMaxBytes int64
-	IOMaxBPS       int64
+	// IOMaxBPS limits disk I/O in by the given bytes per second.
+	IOMaxBPS int64
 }
 
+// Cgroup represents a control group for limiting resources on a process.
 type Cgroup struct {
 	name string
 	path string
 	fd   *os.File
 }
 
+// CreateCgroup creates a new cgroup at the given root path with the given name
+// and limits. It returns a Cgroup with a file descriptor for atomic placement
+// using SysProcAttr.CgroupFD.
 func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
 	cg := &Cgroup{
 		name: name,
@@ -54,7 +72,6 @@ func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
 }
 
 func (c *Cgroup) applyLimits(limits *ResourceLimits) error {
-
 	if limits.CPUMaxPercent > 0 {
 		if err := c.setCPULimit(limits.CPUMaxPercent); err != nil {
 			return fmt.Errorf("set CPU max limit: %w", err)
@@ -114,20 +131,7 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
-func (c *Cgroup) Join(pid int) error {
-	procsPath := filepath.Join(c.path, "cgroup.procs")
-
-	if err := os.WriteFile(
-		procsPath,
-		[]byte(strconv.Itoa(pid)),
-		0644,
-	); err != nil {
-		return fmt.Errorf("add process to cgroup: %w", err)
-	}
-
-	return nil
-}
-
+// Destroy closes the cgroup file descriptor and removes the cgroup directory.
 func (c *Cgroup) Destroy() error {
 	// Ignore error and just go ahead and remove.
 	c.close()
@@ -153,6 +157,8 @@ func (c *Cgroup) close() error {
 	return nil
 }
 
+// FD returns the cgroup file descriptor used for atomic placement using
+// SysProcAttr.CgroupFD.
 func (c *Cgroup) FD() *os.File {
 	return c.fd
 }
@@ -166,6 +172,26 @@ func (c *Cgroup) Path() string {
 }
 
 func detectRootDevice() (string, error) {
+	deviceID, err := getRootDeviceID()
+	if err != nil {
+		return "", err
+	}
+
+	devicePath, err := getDevicePath(deviceID)
+	if err != nil {
+		return "", err
+	}
+
+	if isPartition(devicePath) {
+		return readDeviceID(filepath.Dir(devicePath))
+	}
+
+	return deviceID, nil
+}
+
+// getRootDeviceID returns device ID in 'major:minor' format for the root
+// filesystem.
+func getRootDeviceID() (string, error) {
 	mountinfo, err := os.ReadFile(procMountinfo)
 	if err != nil {
 		return "", fmt.Errorf("read mountinfo: %w", err)
@@ -177,45 +203,49 @@ func detectRootDevice() (string, error) {
 			continue
 		}
 
-		if fields[4] == "/" {
-			deviceID := fields[2]
+		mountPoint := fields[4]
+		deviceID := fields[2]
 
-			return getParentDiskDevice(deviceID)
+		if mountPoint == "/" {
+			return deviceID, nil
 		}
 	}
 
-	return "", fmt.Errorf("detect root device in %s", procMountinfo)
+	return "", fmt.Errorf("root device not found in %s", procMountinfo)
 }
 
-func getParentDiskDevice(deviceID string) (string, error) {
-	parts := strings.Split(deviceID, ":")
-
-	if len(parts) != 2 {
+func getDevicePath(deviceID string) (string, error) {
+	if !strings.Contains(deviceID, ":") {
 		return "", fmt.Errorf("invalid deviceID: %s", deviceID)
 	}
 
-	devicePath := filepath.Join("/sys/dev/block", deviceID)
-	realPath, err := filepath.EvalSymlinks(devicePath)
+	sysPath := filepath.Join("/sys/dev/block", deviceID)
+	realPath, err := filepath.EvalSymlinks(sysPath)
 	if err != nil {
 		return "", fmt.Errorf("resolve device symlinks: %w", err)
 	}
 
-	partitionFile := filepath.Join(realPath, "partition")
-	if _, err := os.Stat(partitionFile); err == nil {
-		parentPath := filepath.Dir(realPath)
-		parentDeviceFile := filepath.Join(parentPath, "dev")
-
-		devData, err := os.ReadFile(parentDeviceFile)
-		if err != nil {
-			return "", fmt.Errorf("read parent device: %w", err)
-		}
-
-		return strings.TrimSpace(string(devData)), nil
-	}
-
-	return deviceID, nil
+	return realPath, nil
 }
 
+func isPartition(devicePath string) bool {
+	partitionFile := filepath.Join(devicePath, "partition")
+	_, err := os.Stat(partitionFile)
+
+	return err == nil
+}
+
+func readDeviceID(devicePath string) (string, error) {
+	devData, err := os.ReadFile(filepath.Join(devicePath, "dev"))
+	if err != nil {
+		return "", fmt.Errorf("read device id from %s: %w", devicePath, err)
+	}
+
+	return string(bytes.TrimSpace(devData)), nil
+}
+
+// ValidateCgroupRoot checks if the provided path is a vlaid cgroup v2 root by
+// confirming the presence of a cgroup.controllers file.
 func ValidateCgroupRoot(root string) error {
 	controllersPath := filepath.Join(root, "cgroup.controllers")
 	if _, err := os.Stat(controllersPath); err != nil {

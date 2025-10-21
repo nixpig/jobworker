@@ -39,8 +39,7 @@ func NewManager(cgroupRoot string) (*Manager, error) {
 }
 
 func NewManagerWithDefaults() (*Manager, error) {
-	// FIXME: /sys/fs/cgroup is an assumption.
-	return NewManager("/sys/fs/cgroup")
+	return NewManager(cgroups.DefaultMountPoint)
 }
 
 // RunJob creates and starts a new Job with the given program and args. It

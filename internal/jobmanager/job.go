@@ -104,17 +104,9 @@ func (j *Job) Start() error {
 	if err := j.cmd.Start(); err != nil {
 		j.state.Store(JobStateFailed)
 		j.pipeWriter.Close()
+		j.cgroup.Destroy()
 
 		return fmt.Errorf("failed to start process: %w", err)
-	}
-
-	if fd == nil {
-		if err := j.cgroup.Join(j.cmd.Process.Pid); err != nil {
-			j.cmd.Process.Kill()
-			j.state.Store(JobStateFailed)
-			j.pipeWriter.Close()
-			return fmt.Errorf("add process to cgroup: %w", err)
-		}
 	}
 
 	j.pipeWriter.Close()
@@ -144,12 +136,7 @@ func (j *Job) Stop() error {
 
 	// TODO: Implement graceful shutdown for production.
 	// SIGTERM -> timeout -> SIGKILL
-	if err := j.killCgroup(); err != nil {
-		// FIXME: Handle this error?
-		_ = err
-	}
-
-	return nil
+	return j.killCgroup()
 }
 
 // ID returns the ID of the Job.
