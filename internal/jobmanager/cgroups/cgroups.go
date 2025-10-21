@@ -70,10 +70,9 @@ func (c *Cgroup) applyLimits(limits *ResourceLimits) error {
 	}
 
 	if limits.IOMaxBPS > 0 {
-		// if err := c.setIOLimit(limits.IOMaxBPS); err != nil {
-		// 	return fmt.Errorf("set I/O max limit: %w", err)
-		// }
-		c.setIOLimit(limits.IOMaxBPS)
+		if err := c.setIOLimit(limits.IOMaxBPS); err != nil {
+			return fmt.Errorf("set I/O max limit: %w", err)
+		}
 	}
 
 	return nil

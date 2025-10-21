@@ -124,12 +124,11 @@ func (j *Job) Start() error {
 	go func() {
 		j.cmd.Wait()
 
-		j.state.Store(JobStateStopped)
 		j.processState.Store(j.cmd.ProcessState)
+		j.state.Store(JobStateStopped)
+
 		j.cgroup.Destroy()
-
 		close(j.done)
-
 	}()
 
 	return nil
