@@ -41,7 +41,15 @@ func setupTestServerAndClients(
 		t.Fatalf("failed to setup listener: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		listener.Close()
+	})
+
 	manager := jobmanager.NewManager()
+
+	t.Cleanup(func() {
+		manager.Shutdown()
+	})
 
 	s := newServer(
 		manager,
@@ -73,6 +81,10 @@ func setupTestServerAndClients(
 		t.Fatalf("operator failed to connect: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		operatorConn.Close()
+	})
+
 	operatorClient := api.NewJobServiceClient(operatorConn)
 
 	viewerTLSConfig, err := tlsconfig.SetupTLS(&tlsconfig.Config{
@@ -94,6 +106,10 @@ func setupTestServerAndClients(
 		t.Fatalf("viewer failed to connect: '%v'", err)
 	}
 
+	t.Cleanup(func() {
+		viewerConn.Close()
+	})
+
 	viewerClient := api.NewJobServiceClient(viewerConn)
 
 	go func() {
@@ -104,9 +120,6 @@ func setupTestServerAndClients(
 
 	t.Cleanup(func() {
 		s.shutdown()
-		manager.Shutdown()
-		operatorConn.Close()
-		viewerConn.Close()
 	})
 
 	return operatorClient, viewerClient
