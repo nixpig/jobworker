@@ -24,10 +24,6 @@ type Config struct {
 // SetupTLS creates a TLS configuration for mTLS authentication.
 // When `config.Server = true`, requires and verifies client certs.
 // When `config.Server = false`, uses CA to verify server cert.
-//
-// TODO: Add unit tests for production solution. Currently relying on
-// integration tests which exercise all code paths, but take longer to run and
-// don't cover all the potential edge cases.
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
