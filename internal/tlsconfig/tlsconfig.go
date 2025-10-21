@@ -29,10 +29,6 @@ type Config struct {
 //   - TLS_AES_128_GCM_SHA256
 //   - TLS_AES_256_GCM_SHA384
 //   - TLS_CHACHA20_POLY1305_SHA256
-//
-// TODO: Add unit tests for production solution. Currently relying on
-// integration tests which exercise all code paths, but take longer to run and
-// don't cover all the potential edge cases.
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {
