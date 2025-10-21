@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -20,11 +21,11 @@ type config struct {
 
 func (c *config) validate() error {
 	if c.port == 0 {
-		return fmt.Errorf("port must be in valid range")
+		return errors.New("port must be in valid range")
 	}
 
 	if c.certPath == "" {
-		return fmt.Errorf("cert-path cannot be empty")
+		return errors.New("cert-path cannot be empty")
 	}
 
 	if _, err := os.Stat(c.certPath); err != nil {
@@ -32,7 +33,7 @@ func (c *config) validate() error {
 	}
 
 	if c.keyPath == "" {
-		return fmt.Errorf("key-path cannot be empty")
+		return errors.New("key-path cannot be empty")
 	}
 
 	if _, err := os.Stat(c.keyPath); err != nil {
@@ -40,7 +41,7 @@ func (c *config) validate() error {
 	}
 
 	if c.caCertPath == "" {
-		return fmt.Errorf("ca-cert-path cannot be empty")
+		return errors.New("ca-cert-path cannot be empty")
 	}
 
 	if _, err := os.Stat(c.caCertPath); err != nil {

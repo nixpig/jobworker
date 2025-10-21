@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	api "github.com/nixpig/jobworker/api/v1"
@@ -34,6 +35,8 @@ type server struct {
 	cfg        *config
 	grpcServer *grpc.Server
 	addr       string
+
+	mu sync.Mutex
 }
 
 func newServer(
@@ -55,7 +58,7 @@ func (s *server) start(listener net.Listener) error {
 		return fmt.Errorf("setup TLS config: %w", err)
 	}
 
-	s.grpcServer = grpc.NewServer(
+	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			authUnaryInterceptor(s.logger),
 		),
@@ -65,6 +68,10 @@ func (s *server) start(listener net.Listener) error {
 		grpc.Creds(credentials.NewTLS(tlsConfig)),
 	)
 
+	s.mu.Lock()
+	s.grpcServer = grpcServer
+	s.mu.Unlock()
+
 	api.RegisterJobServiceServer(s.grpcServer, s)
 
 	s.addr = listener.Addr().String()
@@ -73,14 +80,18 @@ func (s *server) start(listener net.Listener) error {
 }
 
 func (s *server) shutdown() {
-	if s.grpcServer == nil {
+	s.mu.Lock()
+	grpcServer := s.grpcServer
+	s.mu.Unlock()
+
+	if grpcServer == nil {
 		s.logger.Warn("no gRPC server started")
 		return
 	}
 
 	doneCh := make(chan struct{}, 1)
 	go func() {
-		s.grpcServer.GracefulStop()
+		grpcServer.GracefulStop()
 		close(doneCh)
 	}()
 
@@ -88,7 +99,7 @@ func (s *server) shutdown() {
 	case <-doneCh:
 	case <-time.After(10 * time.Second):
 		s.logger.Warn("graceful shutdown timed out, forcing stop")
-		s.grpcServer.Stop()
+		grpcServer.Stop()
 	}
 }
 
