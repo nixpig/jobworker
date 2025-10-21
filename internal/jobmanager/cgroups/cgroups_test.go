@@ -10,10 +10,6 @@ import (
 	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
 
-const (
-	cgroupRoot = "/sys/fs/cgroup"
-)
-
 func TestCgroups(t *testing.T) {
 	t.Parallel()
 
@@ -26,12 +22,19 @@ func TestCgroups(t *testing.T) {
 			IOMaxBPS:       10485760,
 		}
 
-		cgroup, err := cgroups.CreateCgroup(cgroupRoot, "test-job", limits)
+		cgroup, err := cgroups.CreateCgroup(
+			cgroups.DefaultMountPoint,
+			"test-job",
+			limits,
+		)
 		if err != nil {
 			t.Fatalf("expected not to receive error: got '%v'", err)
 		}
 
-		wantPath := filepath.Join(cgroupRoot, "jobmanager-test-job")
+		wantPath := filepath.Join(
+			cgroups.DefaultMountPoint,
+			"test-job",
+		)
 		if cgroup.Path() != wantPath {
 			t.Errorf(
 				"expected cgroup path: got '%s', want '%s'",
@@ -104,7 +107,7 @@ func TestCgroups(t *testing.T) {
 	t.Run("Test validate cgroup root", func(t *testing.T) {
 		t.Parallel()
 
-		if err := cgroups.ValidateCgroupRoot(cgroupRoot); err != nil {
+		if err := cgroups.ValidateCgroupRoot(cgroups.DefaultMountPoint); err != nil {
 			t.Errorf("expected valid cgroup root: got '%v'", err)
 		}
 

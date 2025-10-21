@@ -22,7 +22,7 @@ const (
 	procMountinfo   = "/proc/self/mountinfo"
 )
 
-// ResourceLimits are the limits applied to a cgroup. Zero for any resource
+// ResourceLimits are the limits applied to a cgroup. Zero (0) for any resource
 // means no limit will be applied for that resource.
 type ResourceLimits struct {
 	// CPUMaxPercent limits CPU usage to the given percentage, e.g. 50 = 50%.
@@ -44,9 +44,12 @@ type Cgroup struct {
 // and limits. It returns a Cgroup with a file descriptor for atomic placement
 // using SysProcAttr.CgroupFD.
 func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
+	// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
+	// Values are currently hard-coded, so omitting validation for the prototype.
+
 	cg := &Cgroup{
 		name: name,
-		path: filepath.Join(root, "jobmanager-"+name),
+		path: filepath.Join(root, name),
 	}
 
 	if err := os.MkdirAll(cg.path, 0755); err != nil {
@@ -131,9 +134,10 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
-// Destroy closes the cgroup file descriptor and removes the cgroup directory.
+// Destroy attempts to close the cgroup file descriptor then removes the cgroup
+// directory.
 func (c *Cgroup) Destroy() error {
-	// Ignore error and just go ahead and remove.
+	// Ignore close error and just go ahead and remove. Perhaps log in future.
 	c.close()
 
 	if err := os.RemoveAll(c.path); err != nil {
@@ -244,12 +248,14 @@ func readDeviceID(devicePath string) (string, error) {
 	return string(bytes.TrimSpace(devData)), nil
 }
 
-// ValidateCgroupRoot checks if the provided path is a vlaid cgroup v2 root by
-// confirming the presence of a cgroup.controllers file.
-func ValidateCgroupRoot(root string) error {
-	controllersPath := filepath.Join(root, "cgroup.controllers")
+// ValidateCgroupRoot checks if the provided cgroupRoot is a vlaid cgroup v2
+// root by confirming the presence of a cgroup.controllers file.
+func ValidateCgroupRoot(cgroupRoot string) error {
+	controllersPath := filepath.Join(cgroupRoot, "cgroup.controllers")
+
 	if _, err := os.Stat(controllersPath); err != nil {
-		return fmt.Errorf("cgroup root not valid at %s: %w", root, err)
+		return fmt.Errorf("cgroup root not valid at %s: %w", cgroupRoot, err)
 	}
+
 	return nil
 }

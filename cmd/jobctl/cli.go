@@ -160,7 +160,8 @@ func (c *cli) startCmd() *cobra.Command {
 
 	// Stop parsing args after first position so that flags passed to the program
 	// to run are not interpreted by the jobctl CLI and are passed as-is,
-	// e.g. `jobctl start tail -f server.log`
+	// e.g. `-f` is an argument to `tail` _not_ to `jobctl start`:
+	//	`jobctl start tail -f server.log`
 	command.Flags().SetInterspersed(false)
 
 	return command

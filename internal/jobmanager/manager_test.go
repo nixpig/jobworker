@@ -9,10 +9,6 @@ import (
 	"github.com/nixpig/jobworker/internal/jobmanager"
 )
 
-const (
-	cgroupRoot = "/sys/fs/cgroup"
-)
-
 func runTestJobInManager(
 	t *testing.T,
 	m *jobmanager.Manager,
@@ -35,7 +31,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test run job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -50,7 +46,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stop long-running job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -95,7 +91,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stream job output", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -139,7 +135,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test shutdown job manager", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -171,7 +167,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test operations on non-existent job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -196,7 +192,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test multiple jobs", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(cgroupRoot)
+		m, err := jobmanager.NewManagerWithDefaults()
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}

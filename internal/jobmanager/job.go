@@ -86,7 +86,7 @@ func (j *Job) Start() error {
 		return NewInvalidStateError(j.state.Load(), JobStateStarting)
 	}
 
-	cg, err := cgroups.CreateCgroup(j.cgroupRoot, j.id, j.limits)
+	cg, err := cgroups.CreateCgroup(j.cgroupRoot, "job-manager-"+j.id, j.limits)
 	if err != nil {
 		return fmt.Errorf("create cgroup: %w", err)
 	}
@@ -94,11 +94,9 @@ func (j *Job) Start() error {
 	j.cgroup = cg
 
 	fd := j.cgroup.FD()
-	if fd != nil {
-		j.cmd.SysProcAttr = &syscall.SysProcAttr{
-			UseCgroupFD: true,
-			CgroupFD:    int(fd.Fd()),
-		}
+	j.cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    int(fd.Fd()),
 	}
 
 	if err := j.cmd.Start(); err != nil {
@@ -134,8 +132,9 @@ func (j *Job) Stop() error {
 
 	j.interrupted.Store(true)
 
-	// TODO: Implement graceful shutdown for production.
-	// SIGTERM -> timeout -> SIGKILL
+	// TODO: Implement graceful shutdown for production:
+	// (SIGTERM -> timeout -> SIGKILL)
+	// For now, just let cgroup.kill SIGKILL all processes immediately.
 	return j.killCgroup()
 }
 

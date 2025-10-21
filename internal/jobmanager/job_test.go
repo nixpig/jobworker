@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nixpig/jobworker/internal/jobmanager"
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
 
 func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
@@ -15,7 +16,13 @@ func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 
 	id := uuid.NewString()
 
-	job, err := jobmanager.NewJob(id, program, args, "/sys/fs/cgroup", nil)
+	job, err := jobmanager.NewJob(
+		id,
+		program,
+		args,
+		cgroups.DefaultMountPoint,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("expected not to receive error: got '%v'", err)
 	}

@@ -28,8 +28,6 @@ const (
 	operatorKeyPath  = "../../certs/client-operator.key"
 	viewerCertPath   = "../../certs/client-viewer.crt"
 	viewerKeyPath    = "../../certs/client-viewer.key"
-
-	cgroupRoot = "/sys/fs/cgroup"
 )
 
 // setupTestServerAndClients starts a test server and returns an operator
@@ -45,7 +43,7 @@ func setupTestServerAndClients(
 		t.Fatalf("failed to setup listener: '%v'", err)
 	}
 
-	manager, err := jobmanager.NewManager(cgroupRoot)
+	manager, err := jobmanager.NewManagerWithDefaults()
 	if err != nil {
 		t.Errorf("expected not to get error: got '%v'", err)
 	}
@@ -366,7 +364,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			output = append(output, resp.Output...)
 		}
 
-		if !strings.Contains(string(output), "jobmanager-"+runResp.Id) {
+		if !strings.Contains(string(output), runResp.Id) {
 			t.Errorf("expected job to be in cgroup: got '%s'", output)
 		}
 	})
