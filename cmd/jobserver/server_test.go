@@ -5,8 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +28,8 @@ const (
 	operatorKeyPath  = "../../certs/client-operator.key"
 	viewerCertPath   = "../../certs/client-viewer.crt"
 	viewerKeyPath    = "../../certs/client-viewer.key"
+
+	cgroupRoot = "/sys/fs/cgroup"
 )
 
 // setupTestServerAndClients starts a test server and returns an operator
@@ -44,7 +45,7 @@ func setupTestServerAndClients(
 		t.Fatalf("failed to setup listener: '%v'", err)
 	}
 
-	manager, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+	manager, err := jobmanager.NewManager(cgroupRoot)
 	if err != nil {
 		t.Errorf("expected not to get error: got '%v'", err)
 	}
@@ -116,20 +117,6 @@ func setupTestServerAndClients(
 	}
 
 	return operatorClient, viewerClient, cleanup
-}
-
-func setupTestCgroupRoot(t *testing.T) string {
-	t.Helper()
-
-	tmpDir := t.TempDir()
-
-	controllersFile := filepath.Join(tmpDir, "cgroup.controllers")
-
-	if err := os.WriteFile(controllersFile, []byte("cpu memory io"), 0644); err != nil {
-		t.Fatalf("failed to setup test cgroup root: '%v'", err)
-	}
-
-	return tmpDir
 }
 
 func testJobStatus(
@@ -229,7 +216,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		if _, err := uuid.Parse(runResp.Id); err != nil {
@@ -290,7 +277,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		streamReq := &api.StreamJobOutputRequest{
@@ -343,7 +330,45 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Signal:      "",
 			Interrupted: false,
 		})
+	})
 
+	t.Run("Test job put in cgroup", func(t *testing.T) {
+		runReq := &api.RunJobRequest{
+			Program: "/bin/bash",
+			Args:    []string{"-c", "cat /proc/self/cgroup"},
+		}
+
+		runResp, err := operatorClient.RunJob(ctx, runReq)
+		if err != nil {
+			t.Fatalf("expected not to get error: got '%v'", err)
+		}
+
+		streamReq := &api.StreamJobOutputRequest{
+			Id: runResp.Id,
+		}
+
+		stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
+		if err != nil {
+			t.Errorf("exptected not to get error: got '%v'", err)
+		}
+
+		var output []byte
+
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Errorf("exptected not to get error: got '%v'", err)
+			}
+
+			output = append(output, resp.Output...)
+		}
+
+		if !strings.Contains(string(output), "jobmanager-"+runResp.Id) {
+			t.Errorf("expected job to be in cgroup: got '%s'", output)
+		}
 	})
 }
 
@@ -365,7 +390,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		// Operator client used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		if _, err := uuid.Parse(runResp.Id); err != nil {
@@ -405,7 +430,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		// Operator used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		streamReq := &api.StreamJobOutputRequest{

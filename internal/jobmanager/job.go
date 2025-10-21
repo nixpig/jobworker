@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"syscall"
 
@@ -69,6 +67,8 @@ func NewJob(
 	j := &Job{
 		id:             id,
 		cmd:            cmd,
+		cgroupRoot:     cgroupRoot,
+		limits:         limits,
 		outputStreamer: output.NewStreamer(pr),
 		pipeWriter:     pw,
 		done:           make(chan struct{}),
@@ -93,7 +93,6 @@ func (j *Job) Start() error {
 
 	j.cgroup = cg
 
-	// TODO: Create a new cgroup and add the process to it.
 	fd := j.cgroup.FD()
 	if fd != nil {
 		j.cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -143,7 +142,10 @@ func (j *Job) Stop() error {
 
 	j.interrupted.Store(true)
 
+	// TODO: Implement graceful shutdown for production.
+	// SIGTERM -> timeout -> SIGKILL
 	if err := j.killCgroup(); err != nil {
+		// FIXME: Handle this error?
 		_ = err
 	}
 
@@ -198,25 +200,12 @@ func (j *Job) Status() *JobStatus {
 }
 
 func (j *Job) killCgroup() error {
-	procsPath := filepath.Join(j.cgroup.Path(), "cgroup.procs")
-	procsData, err := os.ReadFile(procsPath)
-	if err != nil {
-		return fmt.Errorf("read cgroup.procs: %w", err)
-	}
-
-	for line := range strings.SplitSeq(string(procsData), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		pid, err := strconv.Atoi(line)
-		if err != nil {
-			continue
-		}
-
-		// Kill the process (best effort)
-		syscall.Kill(pid, syscall.SIGKILL)
+	if err := os.WriteFile(
+		filepath.Join(j.cgroup.Path(), "cgroup.kill"),
+		[]byte("1"),
+		0644,
+	); err != nil {
+		return fmt.Errorf("write cgroup.kill: %w", err)
 	}
 
 	return nil

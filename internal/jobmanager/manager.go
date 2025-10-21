@@ -39,6 +39,7 @@ func NewManager(cgroupRoot string) (*Manager, error) {
 }
 
 func NewManagerWithDefaults() (*Manager, error) {
+	// FIXME: /sys/fs/cgroup is an assumption.
 	return NewManager("/sys/fs/cgroup")
 }
 

@@ -2,13 +2,15 @@ package jobmanager_test
 
 import (
 	"io"
-	"os"
-	"path/filepath"
 	"syscall"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/nixpig/jobworker/internal/jobmanager"
+)
+
+const (
+	cgroupRoot = "/sys/fs/cgroup"
 )
 
 func runTestJobInManager(
@@ -27,27 +29,13 @@ func runTestJobInManager(
 	return id
 }
 
-func setupTestCgroupRoot(t *testing.T) string {
-	t.Helper()
-
-	tmpDir := t.TempDir()
-
-	controllersFile := filepath.Join(tmpDir, "cgroup.controllers")
-
-	if err := os.WriteFile(controllersFile, []byte("cpu memory io"), 0644); err != nil {
-		t.Fatalf("failed to setup test cgroup root: '%v'", err)
-	}
-
-	return tmpDir
-}
-
 func TestJobManager(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test run job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -62,7 +50,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stop long-running job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -107,7 +95,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stream job output", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -151,7 +139,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test shutdown job manager", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -183,7 +171,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test operations on non-existent job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}
@@ -208,7 +196,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test multiple jobs", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		m, err := jobmanager.NewManager(cgroupRoot)
 		if err != nil {
 			t.Errorf("expected not to get error: got '%v'", err)
 		}

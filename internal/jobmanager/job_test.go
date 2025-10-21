@@ -15,7 +15,7 @@ func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 
 	id := uuid.NewString()
 
-	job, err := jobmanager.NewJob(id, program, args, "/tmp/cgroup/root", nil)
+	job, err := jobmanager.NewJob(id, program, args, "/sys/fs/cgroup", nil)
 	if err != nil {
 		t.Fatalf("expected not to receive error: got '%v'", err)
 	}

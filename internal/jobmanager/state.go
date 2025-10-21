@@ -70,7 +70,7 @@ func (a *AtomicJobState) Load() JobState {
 	return JobState(a.v.Load())
 }
 
-// Store attomically stores the JobState value.
+// Store atomically stores the JobState value.
 func (a *AtomicJobState) Store(s JobState) {
 	a.v.Store(int32(s))
 }

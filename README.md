@@ -11,9 +11,7 @@ make certs
 ## `jobserver`
 
 ```bash
-make build-server
-
-./tmp/bin/jobserver
+make run-server
 ```
 
 ## `jobctl`

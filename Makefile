@@ -1,10 +1,10 @@
 .PHONY: test
 test:
-	go test -race -timeout 10s ./...
+	sudo -E go test -race -timeout 10s ./...
 
 .PHONY: testv
 testv:
-	go test -v -race -timeout 10s ./...
+	sudo -E go test -v -race -timeout 10s ./...
 
 .PHONY: tidy
 tidy: 
@@ -47,7 +47,7 @@ build-server:
 
 .PHONY: run-server
 run-server: build-server
-	./tmp/bin/jobserver
+	sudo ./tmp/bin/jobserver
 
 .PHONY: certs-clean
 certs-clean:

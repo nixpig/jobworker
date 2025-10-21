@@ -42,15 +42,13 @@ func CreateCgroup(root, name string, limits *ResourceLimits) (*Cgroup, error) {
 		}
 	}
 
-	if isRealCgroupRoot(root) {
-		fd, err := os.Open(cg.path)
-		if err != nil {
-			os.RemoveAll(cg.path)
-			return nil, fmt.Errorf("open cgroup dir: %w", err)
-		}
-
-		cg.fd = fd
+	fd, err := os.Open(cg.path)
+	if err != nil {
+		os.RemoveAll(cg.path)
+		return nil, fmt.Errorf("open cgroup dir: %w", err)
 	}
+
+	cg.fd = fd
 
 	return cg, nil
 }
@@ -110,7 +108,7 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	value := fmt.Sprintf("%s rbps=%d wbps=%d", deviceID, bps, bps)
 
 	if err := os.WriteFile(ioMaxPath, []byte(value), 0644); err != nil {
-		return fmt.Errorf("write io.max: %w", err)
+		return fmt.Errorf("write io.max (device: %s): %w", deviceID, err)
 	}
 
 	return nil
@@ -180,15 +178,42 @@ func detectRootDevice() (string, error) {
 		}
 
 		if fields[4] == "/" {
-			return fields[2], nil
+			deviceID := fields[2]
+
+			return getParentDiskDevice(deviceID)
 		}
 	}
 
 	return "", fmt.Errorf("detect root device in %s", procMountinfo)
 }
 
-func isRealCgroupRoot(root string) bool {
-	return root == "/sys/fs/cgroup"
+func getParentDiskDevice(deviceID string) (string, error) {
+	parts := strings.Split(deviceID, ":")
+
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid deviceID: %s", deviceID)
+	}
+
+	devicePath := filepath.Join("/sys/dev/block", deviceID)
+	realPath, err := filepath.EvalSymlinks(devicePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve device symlinks: %w", err)
+	}
+
+	partitionFile := filepath.Join(realPath, "partition")
+	if _, err := os.Stat(partitionFile); err == nil {
+		parentPath := filepath.Dir(realPath)
+		parentDeviceFile := filepath.Join(parentPath, "dev")
+
+		devData, err := os.ReadFile(parentDeviceFile)
+		if err != nil {
+			return "", fmt.Errorf("read parent device: %w", err)
+		}
+
+		return strings.TrimSpace(string(devData)), nil
+	}
+
+	return deviceID, nil
 }
 
 func ValidateCgroupRoot(root string) error {
