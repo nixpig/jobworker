@@ -4,7 +4,7 @@
 // - protoc             v6.31.0
 // source: api/v1/job.proto
 
-package v1
+package apiv1
 
 import (
 	context "context"

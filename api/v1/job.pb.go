@@ -4,7 +4,7 @@
 // 	protoc        v6.31.0
 // source: api/v1/job.proto
 
-package v1
+package apiv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -495,7 +495,7 @@ const file_api_v1_job_proto_rawDesc = "" +
 	"\x06RunJob\x12\x15.job.v1.RunJobRequest\x1a\x16.job.v1.RunJobResponse\x12:\n" +
 	"\aStopJob\x12\x16.job.v1.StopJobRequest\x1a\x17.job.v1.StopJobResponse\x12=\n" +
 	"\bQueryJob\x12\x17.job.v1.QueryJobRequest\x1a\x18.job.v1.QueryJobResponse\x12T\n" +
-	"\x0fStreamJobOutput\x12\x1e.job.v1.StreamJobOutputRequest\x1a\x1f.job.v1.StreamJobOutputResponse0\x01B$Z\"github.com/nixpig/jobworker/api/v1b\x06proto3"
+	"\x0fStreamJobOutput\x12\x1e.job.v1.StreamJobOutputRequest\x1a\x1f.job.v1.StreamJobOutputResponse0\x01B*Z(github.com/nixpig/jobworker/api/v1;apiv1b\x06proto3"
 
 var (
 	file_api_v1_job_proto_rawDescOnce sync.Once

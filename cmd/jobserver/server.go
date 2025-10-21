@@ -1,13 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"sync"
 	"time"
 
 	api "github.com/nixpig/jobworker/api/v1"
@@ -57,7 +57,6 @@ func (s *server) start(listener net.Listener) error {
 
 	s.grpcServer = grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
-			contextCheckUnaryInterceptor(s.logger),
 			authUnaryInterceptor(s.logger),
 		),
 		grpc.ChainStreamInterceptor(
@@ -160,32 +159,19 @@ func (s *server) StreamJobOutput(
 		return status.Error(codes.InvalidArgument, "id is empty")
 	}
 
-	// TODO: If we end up with more than one streaming method then create an
-	// interceptor for the context check, like has been done for unary methods.
-	// Not worth the hassle for a single method though.
-	if stream.Context().Err() != nil {
-		return status.FromContextError(stream.Context().Err()).Err()
-	}
-
 	outputReader, err := s.manager.StreamJobOutput(req.Id)
 	if err != nil {
 		return s.mapError("output stream", err)
 	}
 
-	var closeOnce sync.Once
-	closeReader := func() {
-		if err := outputReader.Close(); err != nil {
-			s.logger.Debug("close output reader", "id", req.Id, "err", err)
-		}
-	}
-	defer closeOnce.Do(closeReader)
+	defer outputReader.Close()
 
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 
 	go func() {
 		<-ctx.Done()
-		closeOnce.Do(closeReader)
+		outputReader.Close()
 	}()
 
 	buf := make([]byte, streamBufferSize)
@@ -197,8 +183,9 @@ func (s *server) StreamJobOutput(
 
 		n, err := outputReader.Read(buf)
 		if n > 0 {
+			output := bytes.Clone(buf[:n])
 			if err := stream.Send(&api.StreamJobOutputResponse{
-				Output: buf[:n],
+				Output: output,
 			}); err != nil {
 				s.logger.Warn("stream data to client", "id", req.Id, "err", err)
 				return status.Error(codes.DataLoss, "failed to stream data")
@@ -230,26 +217,6 @@ func (s *server) mapError(logMsg string, err error) error {
 	default:
 		s.logger.Error(logMsg, "err", err)
 		return status.Error(codes.Internal, "internal server error")
-	}
-}
-
-// contextCheckUnaryInterceptor rejects requests with a cancelled context.
-func contextCheckUnaryInterceptor(
-	logger *slog.Logger,
-) grpc.UnaryServerInterceptor {
-	return func(
-		ctx context.Context,
-		req any,
-		info *grpc.UnaryServerInfo,
-		handler grpc.UnaryHandler,
-	) (any, error) {
-		if ctx.Err() != nil {
-			logger.Debug("request context cancelled", "err", ctx.Err())
-
-			return nil, status.FromContextError(ctx.Err()).Err()
-		}
-
-		return handler(ctx, req)
 	}
 }
 

@@ -60,6 +60,7 @@ func main() {
 	case <-ctx.Done():
 		logger.Info("shutting down server")
 		server.shutdown()
+		_ = <-errCh
 		manager.Shutdown()
 	}
 

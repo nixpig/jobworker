@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package job.v1;
 
-option go_package = "github.com/nixpig/jobworker/api/v1";
+option go_package = "github.com/nixpig/jobworker/api/v1;apiv1";
 
 service JobService {
   rpc RunJob(RunJobRequest) returns (RunJobResponse);
