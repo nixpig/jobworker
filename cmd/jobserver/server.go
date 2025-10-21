@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	api "github.com/nixpig/jobworker/api/v1"
@@ -171,29 +172,20 @@ func (s *server) StreamJobOutput(
 		return s.mapError("output stream", err)
 	}
 
-	defer func() {
+	var closeOnce sync.Once
+	closeReader := func() {
 		if err := outputReader.Close(); err != nil {
-			s.logger.Warn(
-				"close output reader in defer",
-				"id", req.Id,
-				"err", err,
-			)
+			s.logger.Debug("close output reader", "id", req.Id, "err", err)
 		}
-	}()
+	}
+	defer closeOnce.Do(closeReader)
 
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 
 	go func() {
 		<-ctx.Done()
-
-		if err := outputReader.Close(); err != nil {
-			s.logger.Warn(
-				"close output reader on context cancel",
-				"id", req.Id,
-				"err", err,
-			)
-		}
+		closeOnce.Do(closeReader)
 	}()
 
 	buf := make([]byte, streamBufferSize)
