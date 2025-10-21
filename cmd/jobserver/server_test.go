@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,7 +44,10 @@ func setupTestServerAndClients(
 		t.Fatalf("failed to setup listener: '%v'", err)
 	}
 
-	manager := jobmanager.NewManager()
+	manager, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+	if err != nil {
+		t.Errorf("expected not to get error: got '%v'", err)
+	}
 
 	s := newServer(
 		manager,
@@ -111,6 +116,20 @@ func setupTestServerAndClients(
 	}
 
 	return operatorClient, viewerClient, cleanup
+}
+
+func setupTestCgroupRoot(t *testing.T) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+
+	controllersFile := filepath.Join(tmpDir, "cgroup.controllers")
+
+	if err := os.WriteFile(controllersFile, []byte("cpu memory io"), 0644); err != nil {
+		t.Fatalf("failed to setup test cgroup root: '%v'", err)
+	}
+
+	return tmpDir
 }
 
 func testJobStatus(

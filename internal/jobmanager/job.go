@@ -5,9 +5,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
 
@@ -18,8 +22,11 @@ type Job struct {
 	id          string
 	state       AtomicJobState
 	interrupted atomic.Bool
+	cgroupRoot  string
 
 	cmd            *exec.Cmd
+	cgroup         *cgroups.Cgroup
+	limits         *cgroups.ResourceLimits
 	processState   atomic.Pointer[os.ProcessState]
 	outputStreamer *output.Streamer
 	pipeWriter     io.WriteCloser
@@ -42,6 +49,8 @@ func NewJob(
 	id string,
 	program string,
 	args []string,
+	cgroupRoot string,
+	limits *cgroups.ResourceLimits,
 ) (*Job, error) {
 	if program == "" {
 		return nil, fmt.Errorf("program cannot be empty")
@@ -77,18 +86,39 @@ func (j *Job) Start() error {
 		return NewInvalidStateError(j.state.Load(), JobStateStarting)
 	}
 
+	cg, err := cgroups.CreateCgroup(j.cgroupRoot, j.id, j.limits)
+	if err != nil {
+		return fmt.Errorf("create cgroup: %w", err)
+	}
+
+	j.cgroup = cg
+
 	// TODO: Create a new cgroup and add the process to it.
+	fd := j.cgroup.FD()
+	if fd != nil {
+		j.cmd.SysProcAttr = &syscall.SysProcAttr{
+			UseCgroupFD: true,
+			CgroupFD:    int(fd.Fd()),
+		}
+	}
 
 	if err := j.cmd.Start(); err != nil {
 		j.state.Store(JobStateFailed)
-
 		j.pipeWriter.Close()
 
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
-	j.pipeWriter.Close()
+	if fd == nil {
+		if err := j.cgroup.Join(j.cmd.Process.Pid); err != nil {
+			j.cmd.Process.Kill()
+			j.state.Store(JobStateFailed)
+			j.pipeWriter.Close()
+			return fmt.Errorf("add process to cgroup: %w", err)
+		}
+	}
 
+	j.pipeWriter.Close()
 	j.state.Store(JobStateStarted)
 
 	go func() {
@@ -96,10 +126,10 @@ func (j *Job) Start() error {
 
 		j.state.Store(JobStateStopped)
 		j.processState.Store(j.cmd.ProcessState)
+		j.cgroup.Destroy()
 
 		close(j.done)
 
-		j.cleanup()
 	}()
 
 	return nil
@@ -114,9 +144,11 @@ func (j *Job) Stop() error {
 
 	j.interrupted.Store(true)
 
-	// TODO: When cgroups are implemented, use those to kill the process.
-	// In the meantime, just use cmd.Process.Kill() and accept the small risk.
-	return j.cmd.Process.Kill()
+	if err := j.killCgroup(); err != nil {
+		_ = err
+	}
+
+	return nil
 }
 
 // ID returns the ID of the Job.
@@ -166,6 +198,27 @@ func (j *Job) Status() *JobStatus {
 	}
 }
 
-func (j *Job) cleanup() {
-	// TODO: Remove cgroup when implemented.
+func (j *Job) killCgroup() error {
+	procsPath := filepath.Join(j.cgroup.Path(), "cgroup.procs")
+	procsData, err := os.ReadFile(procsPath)
+	if err != nil {
+		return fmt.Errorf("read cgroup.procs: %w", err)
+	}
+
+	for line := range strings.SplitSeq(string(procsData), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		pid, err := strconv.Atoi(line)
+		if err != nil {
+			continue
+		}
+
+		// Kill the process (best effort)
+		syscall.Kill(pid, syscall.SIGKILL)
+	}
+
+	return nil
 }

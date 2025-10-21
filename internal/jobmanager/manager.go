@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
 
 // Manager is responsible for creating and managing Jobs.
@@ -19,16 +20,26 @@ type Manager struct {
 	// is fine for now, since we only have one kind of Job. In future, if we
 	// had other kinds of Job, like RemoteJob, ScheduledJob, BatchJob, whatever,
 	// then refactor this to an interface.
-	jobs map[string]*Job
+	jobs       map[string]*Job
+	cgroupRoot string
 
 	mu sync.Mutex
 }
 
 // NewManager creates a new Manager ready to run Jobs.
-func NewManager() *Manager {
-	return &Manager{
-		jobs: make(map[string]*Job),
+func NewManager(cgroupRoot string) (*Manager, error) {
+	if err := cgroups.ValidateCgroupRoot(cgroupRoot); err != nil {
+		return nil, err
 	}
+
+	return &Manager{
+		jobs:       make(map[string]*Job),
+		cgroupRoot: cgroupRoot,
+	}, nil
+}
+
+func NewManagerWithDefaults() (*Manager, error) {
+	return NewManager("/sys/fs/cgroup")
 }
 
 // RunJob creates and starts a new Job with the given program and args. It
@@ -36,10 +47,11 @@ func NewManager() *Manager {
 func (m *Manager) RunJob(
 	program string,
 	args []string,
+	limits *cgroups.ResourceLimits,
 ) (string, error) {
 	id := uuid.NewString()
 
-	job, err := NewJob(id, program, args)
+	job, err := NewJob(id, program, args, m.cgroupRoot, limits)
 	if err != nil {
 		return "", err
 	}

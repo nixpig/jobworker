@@ -2,6 +2,8 @@ package jobmanager_test
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 
@@ -17,12 +19,26 @@ func runTestJobInManager(
 ) string {
 	t.Helper()
 
-	id, err := m.RunJob(program, args)
+	id, err := m.RunJob(program, args, nil)
 	if err != nil {
 		t.Fatalf("expected not to receive error: got '%v'", err)
 	}
 
 	return id
+}
+
+func setupTestCgroupRoot(t *testing.T) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+
+	controllersFile := filepath.Join(tmpDir, "cgroup.controllers")
+
+	if err := os.WriteFile(controllersFile, []byte("cpu memory io"), 0644); err != nil {
+		t.Fatalf("failed to setup test cgroup root: '%v'", err)
+	}
+
+	return tmpDir
 }
 
 func TestJobManager(t *testing.T) {
@@ -31,7 +47,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test run job", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		id := runTestJobInManager(t, m, "echo", []string{"Hello, world!"})
 
@@ -43,7 +62,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stop long-running job", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		id := runTestJobInManager(t, m, "sleep", []string{"5"})
 
@@ -85,7 +107,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stream job output", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		id := runTestJobInManager(
 			t,
@@ -126,7 +151,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test shutdown job manager", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		id := runTestJobInManager(t, m, "sleep", []string{"10"})
 
@@ -155,7 +183,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test operations on non-existent job", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		if _, err := m.QueryJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
 			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
@@ -177,7 +208,10 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test multiple jobs", func(t *testing.T) {
 		t.Parallel()
 
-		m := jobmanager.NewManager()
+		m, err := jobmanager.NewManager(setupTestCgroupRoot(t))
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
 
 		ids := make([]string, 3)
 		for i := range len(ids) {
