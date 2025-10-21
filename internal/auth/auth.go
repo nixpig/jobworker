@@ -48,10 +48,6 @@ var methodPermissions = map[string]Permission{
 	"/job.v1.JobService/StreamJobOutput": PermissionJobStream,
 }
 
-// TODO: Add unit tests for production solution. Currently relying on
-// integration tests which exercise all code paths, but take longer to run and
-// don't cover all the potential edge cases.
-
 // GetClientIdentity extracts and returns the Common Name (CN) and
 // OrganizationalUnit (OU) fields from a client's mTLS certificate on the given
 // gRPC context
