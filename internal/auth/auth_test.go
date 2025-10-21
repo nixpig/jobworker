@@ -1,7 +1,6 @@
 package auth_test
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -135,7 +134,7 @@ func TestGetClientIdentity(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err != nil {
@@ -154,7 +153,7 @@ func TestGetClientIdentity(t *testing.T) {
 	t.Run("Test peer with no TLS info", func(t *testing.T) {
 		p := &peer.Peer{AuthInfo: nil}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
@@ -171,7 +170,7 @@ func TestGetClientIdentity(t *testing.T) {
 	})
 
 	t.Run("Test no peer in context", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
@@ -208,7 +207,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
@@ -231,7 +230,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err == nil {
 			t.Errorf("expected to receive error")
@@ -255,7 +254,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
@@ -278,7 +277,7 @@ func TestAuthorise(t *testing.T) {
 
 		p := &peer.Peer{AuthInfo: authInfo}
 
-		ctx := peer.NewContext(context.Background(), p)
+		ctx := peer.NewContext(t.Context(), p)
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
 			t.Errorf("expected to receive error")
@@ -286,7 +285,7 @@ func TestAuthorise(t *testing.T) {
 	})
 
 	t.Run("Test invalid context", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 
 		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
 			t.Errorf("expected to receive error")
