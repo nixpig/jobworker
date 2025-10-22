@@ -42,7 +42,11 @@ func setupTestEnv(t *testing.T) *testEnv {
 	)
 
 	if output, err := buildServer.CombinedOutput(); err != nil {
-		t.Fatalf("failed to build server binary: %v\n%s", err, output)
+		t.Fatalf(
+			"failed to build server binary: '%v' (output: '%s')",
+			err,
+			output,
+		)
 	}
 
 	env.cliPath = filepath.Join(env.binDir, "jobctl")
@@ -50,7 +54,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	buildCLI := exec.Command("go", "build", "-o", env.cliPath, "../cmd/jobctl")
 
 	if output, err := buildCLI.CombinedOutput(); err != nil {
-		t.Fatalf("failed to build CLI binary: %v\n%s", err, output)
+		t.Fatalf("failed to build CLI binary: '%v' (output: '%s')", err, output)
 	}
 
 	certFiles := []string{
@@ -69,7 +73,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 		path := filepath.Join(env.certDir, filename)
 		if err := os.WriteFile(path, data, 0644); err != nil {
-			t.Fatalf("save cert %s: %v", filename, err)
+			t.Fatalf("save cert '%s': '%v'", filename, err)
 		}
 	}
 
