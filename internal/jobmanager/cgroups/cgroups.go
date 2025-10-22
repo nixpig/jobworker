@@ -38,10 +38,14 @@ type Cgroup struct {
 	mu sync.Mutex
 }
 
-// CreateCgroup creates a new cgroup at the given root path with the given name
-// and limits. It returns a Cgroup with a file descriptor for atomic placement
-// using SysProcAttr.CgroupFD.
+// CreateCgroup creates a new cgroup at with the given name and limits. It
+// returns a Cgroup with a file descriptor for atomic placement using
+// SysProcAttr.CgroupFD.
 func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
+	if name == "" {
+		return nil, errors.New("name cannot be empty")
+	}
+
 	root, err := getCgroupRoot()
 	if err != nil {
 		return nil, fmt.Errorf("get cgroup root: %w", err)
@@ -62,7 +66,11 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		path: filepath.Join(root, name),
 	}
 
-	if err := os.MkdirAll(cg.path, 0755); err != nil {
+	if err := os.Mkdir(cg.path, 0755); err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("cgroup already exists: %w", err)
+		}
+
 		return nil, fmt.Errorf("make cgroup dir: %w", err)
 	}
 
