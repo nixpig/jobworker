@@ -74,12 +74,11 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		return nil, fmt.Errorf("make cgroup dir: %w", err)
 	}
 
-	cgroupToCleanUp := cg
-	defer func() {
+	defer func(cgroupPath string) {
 		if err != nil {
-			os.RemoveAll(cgroupToCleanUp.path)
+			os.RemoveAll(cgroupPath)
 		}
-	}()
+	}(cg.path)
 
 	if limits != nil {
 		// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
@@ -230,6 +229,8 @@ func detectRootDevice() (_ string, err error) {
 		}
 
 		rootDeviceID = deviceID
+
+		return
 	})
 
 	return rootDeviceID, err
@@ -267,6 +268,9 @@ func getCgroupRoot() (_ string, err error) {
 	initGetCgroupRoot.Do(func() {
 		var mountinfo []byte
 		mountinfo, err = os.ReadFile(procSelfMountinfo)
+		if err != nil {
+			return
+		}
 
 		for line := range strings.SplitSeq(string(mountinfo), "\n") {
 			fields := strings.Fields(line)
