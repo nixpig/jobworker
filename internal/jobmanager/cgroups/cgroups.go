@@ -42,6 +42,9 @@ type Cgroup struct {
 // returns a Cgroup with a file descriptor for atomic placement using
 // SysProcAttr.CgroupFD.
 func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
+	// TODO: Add validation for things like path traversal. Since this is only
+	// used by the Job package and we know it always passes a UUID (and not
+	// arbitrary strings) just checking for empty string is safe for prototype.
 	if name == "" {
 		return nil, errors.New("name cannot be empty")
 	}
@@ -194,7 +197,8 @@ func (c *Cgroup) Kill() error {
 }
 
 // Destroy attempts to close the cgroup file descriptor then removes the cgroup
-// directory.
+// directory. It's assumed the consumer has called Kill to SIGKILL all
+// processes in the cgroup.
 func (c *Cgroup) Destroy() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
