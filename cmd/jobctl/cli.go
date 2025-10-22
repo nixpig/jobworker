@@ -4,9 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
-	"syscall"
 	"text/tabwriter"
 
 	api "github.com/nixpig/jobworker/api/v1"
@@ -179,10 +176,10 @@ func (c *cli) statusCmd() *cobra.Command {
 			// --skip-headers to hide headers.
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 
-			fmt.Fprintf(w, "STATE\tEXIT CODE\tSIGNAL\tINTERRUPTED\n")
+			fmt.Fprintf(w, "STATE\tEXIT CODE\tSIGNAL\tINTERRUPTED\t\n")
 			fmt.Fprintf(
 				w,
-				"%s\t%d\t%s\t%t\n",
+				"%s\t%d\t%s\t%t\t\n",
 				mapState(resp.State),
 				resp.ExitCode,
 				resp.Signal,
@@ -226,15 +223,8 @@ func (c *cli) streamCmd() *cobra.Command {
 		Example: "  jobctl stream 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := signal.NotifyContext(
-				cmd.Context(),
-				syscall.SIGTERM,
-				os.Interrupt,
-			)
-			defer cancel()
-
 			stream, err := c.client.StreamJobOutput(
-				ctx,
+				cmd.Context(),
 				&api.StreamJobOutputRequest{Id: args[0]},
 			)
 			if err != nil {
@@ -291,6 +281,8 @@ func mapError(err error) error {
 // mapState translates gRPC JobState enum values to human-readable strings.
 func mapState(state api.JobState) string {
 	switch state {
+	case api.JobState_JOB_STATE_UNSPECIFIED:
+		return "Unspecified"
 	case api.JobState_JOB_STATE_CREATED:
 		return "Created"
 	case api.JobState_JOB_STATE_STARTING:
@@ -304,6 +296,6 @@ func mapState(state api.JobState) string {
 	case api.JobState_JOB_STATE_FAILED:
 		return "Failed"
 	default:
-		return "Unknown"
+		return fmt.Sprintf("Unknown(%d)", state)
 	}
 }
