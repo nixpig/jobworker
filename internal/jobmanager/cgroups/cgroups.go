@@ -169,12 +169,30 @@ func (c *Cgroup) Kill() error {
 	return nil
 }
 
-// Destroy attempts to close the cgroup file descriptor then removes the cgroup
-// directory. It's assumed the consumer has called Kill to SIGKILL all
-// processes in the cgroup.
+// Destroy attempts to disable all active controllers in
+// `cgroup.subtree_control` and delete the cgroup directory. It's assumed the
+// consumer has called Kill to SIGKILL all processes in the cgroup.
 func (c *Cgroup) Destroy() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	subtreeControlPath := filepath.Join(c.path, "cgroup.subtree_control")
+
+	controllersData, err := os.ReadFile(subtreeControlPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read cgroup subtree_control: %w", err)
+	}
+
+	controllers := strings.Fields(string(controllersData))
+
+	for _, controller := range controllers {
+		if strings.HasPrefix(controller, "+") {
+			disableCmd := []byte("-" + controller[1:])
+			if err := os.WriteFile(subtreeControlPath, disableCmd, 0644); err != nil {
+				return fmt.Errorf("disable controller: %w", err)
+			}
+		}
+	}
 
 	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove cgroup: %w", err)

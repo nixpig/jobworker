@@ -124,6 +124,8 @@ func (j *Job) Start() (err error) {
 	go func() {
 		j.cmd.Wait()
 
+		// TODO: Capture errors from these 'best effort' attempts when observability
+		// implemented.
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
 		j.cgroup.Kill()
