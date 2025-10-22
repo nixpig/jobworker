@@ -58,12 +58,6 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		return nil, err
 	}
 
-	defer func() {
-		if err != nil {
-			os.RemoveAll(cg.path)
-		}
-	}()
-
 	cg = &Cgroup{
 		name: name,
 		path: filepath.Join(root, name),
@@ -76,6 +70,12 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 
 		return nil, fmt.Errorf("make cgroup dir: %w", err)
 	}
+
+	defer func() {
+		if err != nil {
+			os.RemoveAll(cg.path)
+		}
+	}()
 
 	if limits != nil {
 		// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
