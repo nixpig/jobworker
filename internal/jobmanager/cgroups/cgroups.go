@@ -18,6 +18,14 @@ const (
 	procSelfMountinfo = "/proc/self/mountinfo"
 )
 
+var (
+	cgroupRoot   string
+	rootDeviceID string
+
+	initGetCgroupRoot    sync.Once
+	initDetectRootDevice sync.Once
+)
+
 // ResourceLimits are the limits applied to a cgroup. Zero (0) for any resource
 // means no limit will be applied for that resource.
 type ResourceLimits struct {
@@ -190,31 +198,41 @@ func (c *Cgroup) Path() string {
 	return c.path
 }
 
-func detectRootDevice() (string, error) {
-	deviceID, err := getRootDeviceID()
-	if err != nil {
-		return "", err
-	}
-
-	partitionPath := filepath.Join("/sys/dev/block", deviceID, "partition")
-
-	_, err = os.Stat(partitionPath)
-	if err == nil {
-		// NOTE: Using fmt.Sprintf rather than filepath.Join() so that resolution
-		// of `..` is handled by kernel instead of Go.
-		parentDevicePath := fmt.Sprintf("/sys/dev/block/%s/../dev", deviceID)
-		parentDeviceID, err := os.ReadFile(parentDevicePath)
+// detectRootDevice detects the root device and caches the result. Subsequent
+// calls return the cached root device.
+func detectRootDevice() (_ string, err error) {
+	initDetectRootDevice.Do(func() {
+		var deviceID string
+		deviceID, err = getRootDeviceID()
 		if err != nil {
-			return "", fmt.Errorf(
-				"read parent device ID from '%s': %w",
-				parentDevicePath,
-				err,
-			)
+			return
 		}
-		return string(bytes.TrimSpace(parentDeviceID)), nil
-	}
 
-	return deviceID, nil
+		partitionPath := filepath.Join("/sys/dev/block", deviceID, "partition")
+
+		if _, err = os.Stat(partitionPath); err == nil {
+			// Using fmt.Sprintf rather than filepath.Join() so that resolution
+			// of `..` is handled by kernel instead of Go.
+			parentDevicePath := fmt.Sprintf(
+				"/sys/dev/block/%s/../dev",
+				deviceID,
+			)
+
+			var parentDeviceID []byte
+			parentDeviceID, err = os.ReadFile(parentDevicePath)
+			if err != nil {
+				return
+			}
+
+			rootDeviceID = string(bytes.TrimSpace(parentDeviceID))
+
+			return
+		}
+
+		rootDeviceID = deviceID
+	})
+
+	return rootDeviceID, err
 }
 
 // getRootDeviceID returns device ID in 'major:minor' format for the root
@@ -243,26 +261,25 @@ func getRootDeviceID() (string, error) {
 }
 
 // getCgroupRoot determines the root cgroup for cgroups v2 by finding the first
-// cgroup2 entry in /proc/self/mountinfo.
-func getCgroupRoot() (string, error) {
-	mountinfo, err := os.ReadFile(procSelfMountinfo)
-	if err != nil {
-		return "", fmt.Errorf("read mountinfo: %w", err)
-	}
+// cgroup2 entry in /proc/self/mountinfo and caches the result. Subsequent
+// calls return the cached cgroup root.
+func getCgroupRoot() (_ string, err error) {
+	initGetCgroupRoot.Do(func() {
+		var mountinfo []byte
+		mountinfo, err = os.ReadFile(procSelfMountinfo)
 
-	for line := range strings.SplitSeq(string(mountinfo), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 9 {
-			continue
+		for line := range strings.SplitSeq(string(mountinfo), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 9 {
+				continue
+			}
+
+			if fields[8] == "cgroup2" {
+				cgroupRoot = fields[4]
+				break
+			}
 		}
+	})
 
-		fs := fields[8]
-
-		if fs == "cgroup2" {
-			mountPoint := fields[4]
-			return mountPoint, nil
-		}
-	}
-
-	return "", errors.New("cgroup2 mount point not found")
+	return cgroupRoot, err
 }

@@ -88,6 +88,7 @@ func (j *Job) Start() (err error) {
 			j.pipeWriter.Close()
 
 			if j.cgroup != nil {
+				// TODO: If observability implemented, capture these errors.
 				j.cgroup.Destroy()
 			}
 
@@ -125,6 +126,7 @@ func (j *Job) Start() (err error) {
 
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
+		j.cgroup.Kill()
 		j.cgroup.Destroy()
 
 		close(j.done)
