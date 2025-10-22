@@ -66,9 +66,10 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		return nil, fmt.Errorf("make cgroup dir: %w", err)
 	}
 
+	cgroupToCleanUp := cg
 	defer func() {
 		if err != nil {
-			os.RemoveAll(cg.path)
+			os.RemoveAll(cgroupToCleanUp.path)
 		}
 	}()
 
@@ -195,13 +196,22 @@ func detectRootDevice() (string, error) {
 		return "", err
 	}
 
-	devicePath, err := getDevicePath(deviceID)
-	if err != nil {
-		return "", err
-	}
+	partitionPath := filepath.Join("/sys/dev/block", deviceID, "partition")
 
-	if isPartition(devicePath) {
-		return getDeviceID(filepath.Dir(devicePath))
+	_, err = os.Stat(partitionPath)
+	if err == nil {
+		// NOTE: Using fmt.Sprintf rather than filepath.Join() so that resolution
+		// of `..` is handled by kernel instead of Go.
+		parentDevicePath := fmt.Sprintf("/sys/dev/block/%s/../dev", deviceID)
+		parentDeviceID, err := os.ReadFile(parentDevicePath)
+		if err != nil {
+			return "", fmt.Errorf(
+				"read parent device ID from '%s': %w",
+				parentDevicePath,
+				err,
+			)
+		}
+		return string(bytes.TrimSpace(parentDeviceID)), nil
 	}
 
 	return deviceID, nil
@@ -230,36 +240,6 @@ func getRootDeviceID() (string, error) {
 	}
 
 	return "", fmt.Errorf("root device not found in %s", procSelfMountinfo)
-}
-
-func getDevicePath(deviceID string) (string, error) {
-	if !strings.Contains(deviceID, ":") {
-		return "", fmt.Errorf("invalid deviceID: %s", deviceID)
-	}
-
-	sysPath := filepath.Join("/sys/dev/block", deviceID)
-	realPath, err := filepath.EvalSymlinks(sysPath)
-	if err != nil {
-		return "", fmt.Errorf("resolve device symlinks: %w", err)
-	}
-
-	return realPath, nil
-}
-
-func isPartition(devicePath string) bool {
-	partitionFile := filepath.Join(devicePath, "partition")
-	_, err := os.Stat(partitionFile)
-
-	return err == nil
-}
-
-func getDeviceID(devicePath string) (string, error) {
-	devData, err := os.ReadFile(filepath.Join(devicePath, "dev"))
-	if err != nil {
-		return "", fmt.Errorf("read device id from %s: %w", devicePath, err)
-	}
-
-	return string(bytes.TrimSpace(devData)), nil
 }
 
 // getCgroupRoot determines the root cgroup for cgroups v2 by finding the first
