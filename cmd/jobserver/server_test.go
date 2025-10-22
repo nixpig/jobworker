@@ -1,3 +1,5 @@
+//go:build !e2e
+
 package main
 
 import (
@@ -70,7 +72,7 @@ func setupTestServerAndClients(
 		listener.Close()
 	})
 
-	manager, err := jobmanager.NewManagerWithDefaults()
+	manager, err := jobmanager.NewManager()
 	if err != nil {
 		t.Errorf("expected not to get error: got '%v'", err)
 	}
@@ -278,7 +280,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		_, err = operatorClient.StopJob(ctx, stopReq)
 		if err != nil {
-			t.Errorf("exptected not to get error: got '%v'", err)
+			t.Errorf("expected not to get error: got '%v'", err)
 		}
 
 		// Try stopping an already stopped job
@@ -321,7 +323,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 		for i := range 3 {
 			stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
 			if err != nil {
-				t.Errorf("exptected not to get error: got '%v'", err)
+				t.Errorf("expected not to get error: got '%v'", err)
 			}
 
 			var output []byte
@@ -332,7 +334,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 					break
 				}
 				if err != nil {
-					t.Errorf("exptected not to get error: got '%v'", err)
+					t.Errorf("expected not to get error: got '%v'", err)
 				}
 
 				output = append(output, resp.Output...)
@@ -382,7 +384,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
 		if err != nil {
-			t.Errorf("exptected not to get error: got '%v'", err)
+			t.Errorf("expected not to get error: got '%v'", err)
 		}
 
 		var output []byte
@@ -393,7 +395,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 				break
 			}
 			if err != nil {
-				t.Errorf("exptected not to get error: got '%v'", err)
+				t.Errorf("expected not to get error: got '%v'", err)
 			}
 
 			output = append(output, resp.Output...)
@@ -473,7 +475,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		for i := range 3 {
 			stream, err := viewerClient.StreamJobOutput(ctx, streamReq)
 			if err != nil {
-				t.Errorf("exptected not to get error: got '%v'", err)
+				t.Errorf("expected not to get error: got '%v'", err)
 			}
 
 			var output []byte
@@ -484,7 +486,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 					break
 				}
 				if err != nil {
-					t.Errorf("exptected not to get error: got '%v'", err)
+					t.Errorf("expected not to get error: got '%v'", err)
 				}
 
 				output = append(output, resp.Output...)

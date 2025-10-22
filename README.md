@@ -28,4 +28,7 @@ make build-cli
 
 ```bash
 make test
+
+make test-e2e
 ```
+

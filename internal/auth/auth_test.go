@@ -1,3 +1,5 @@
+//go:build !e2e
+
 package auth_test
 
 import (

@@ -1,3 +1,5 @@
+//go:build !e2e
+
 package cgroups_test
 
 import (
@@ -23,7 +25,6 @@ func TestCgroups(t *testing.T) {
 		}
 
 		cgroup, err := cgroups.CreateCgroup(
-			cgroups.DefaultMountPoint,
 			"test-job",
 			limits,
 		)
@@ -31,10 +32,8 @@ func TestCgroups(t *testing.T) {
 			t.Fatalf("expected not to receive error: got '%v'", err)
 		}
 
-		wantPath := filepath.Join(
-			cgroups.DefaultMountPoint,
-			"test-job",
-		)
+		// NOTE: Assuming mounted at /sys/fs/cgroup
+		wantPath := "/sys/fs/cgroup/test-job"
 		if cgroup.Path() != wantPath {
 			t.Errorf(
 				"expected cgroup path: got '%s', want '%s'",
@@ -101,22 +100,6 @@ func TestCgroups(t *testing.T) {
 
 		if _, err := os.Stat(cgroup.Path()); !os.IsNotExist(err) {
 			t.Errorf("expected cgroup path to be removed: got '%v'", err)
-		}
-	})
-
-	t.Run("Test validate cgroup root", func(t *testing.T) {
-		t.Parallel()
-
-		if err := cgroups.ValidateCgroupRoot(cgroups.DefaultMountPoint); err != nil {
-			t.Errorf("expected valid cgroup root: got '%v'", err)
-		}
-
-		invalidCgroupRoot := t.TempDir()
-		if err := cgroups.ValidateCgroupRoot(invalidCgroupRoot); err == nil {
-			t.Errorf(
-				"expected error for invalid cgroup root: %s",
-				invalidCgroupRoot,
-			)
 		}
 	})
 }

@@ -4,22 +4,18 @@ package cgroups
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
-	// DefaultMountPoint is the default mount point for the root control group.
-	// This is a reasonable assumption, but not guaranteed to be correct. In a
-	// production-ready solution we'd need to reliably determine this instead of
-	// hard-coding it.
-	DefaultMountPoint = "/sys/fs/cgroup"
-
-	cpuPeriodMicros = 100000
-	procMountinfo   = "/proc/self/mountinfo"
+	cpuPeriodMicros   = 100000
+	procSelfMountinfo = "/proc/self/mountinfo"
 )
 
 // ResourceLimits are the limits applied to a cgroup. Zero (0) for any resource
@@ -38,18 +34,22 @@ type Cgroup struct {
 	name string
 	path string
 	fd   *os.File
+
+	mu sync.Mutex
 }
 
 // CreateCgroup creates a new cgroup at the given root path with the given name
 // and limits. It returns a Cgroup with a file descriptor for atomic placement
 // using SysProcAttr.CgroupFD.
-func CreateCgroup(
-	root, name string,
-	limits *ResourceLimits,
-) (cg *Cgroup, err error) {
-	// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
-	// Values are currently hard-coded in server.go, so omitting validation for
-	// the prototype.
+func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
+	root, err := getCgroupRoot()
+	if err != nil {
+		return nil, fmt.Errorf("get cgroup root: %w", err)
+	}
+
+	if err := validateCgroupRoot(root); err != nil {
+		return nil, err
+	}
 
 	defer func() {
 		if err != nil {
@@ -67,6 +67,10 @@ func CreateCgroup(
 	}
 
 	if limits != nil {
+		// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
+		// Values are currently hard-coded in server.go, so omitting validation for
+		// the prototype.
+
 		if err := cg.applyLimits(limits); err != nil {
 			return nil, fmt.Errorf("apply cgroup limits: %w", err)
 		}
@@ -142,25 +146,8 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
-// CloseFD closes the file descriptor of the cgroup.
-func (c *Cgroup) CloseFD() error {
-	return c.close()
-}
-
-// Destroy attempts to close the cgroup file descriptor then removes the cgroup
-// directory.
-func (c *Cgroup) Destroy() error {
-	// Ignore close error and just go ahead and remove. Perhaps log in future.
-	c.close()
-
-	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove cgroup: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Cgroup) close() error {
+// closeFD closes the file descriptor of the cgroup.
+func (c *Cgroup) closeFD() error {
 	if c.fd != nil {
 		err := c.fd.Close()
 
@@ -174,9 +161,53 @@ func (c *Cgroup) close() error {
 	return nil
 }
 
+// CloseFD provides synchronised access to close the file descriptor.
+func (c *Cgroup) CloseFD() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.closeFD()
+}
+
+// Kill kills all processes in the cgroup by writing to `cgroup.kill`.
+func (c *Cgroup) Kill() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if err := os.WriteFile(
+		filepath.Join(c.path, "cgroup.kill"),
+		[]byte("1"),
+		0644,
+	); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
+}
+
+// Destroy attempts to close the cgroup file descriptor then removes the cgroup
+// directory.
+func (c *Cgroup) Destroy() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Ignore close error and just go ahead and remove. Log in future if/when
+	// observability comes into scope.
+	c.closeFD()
+
+	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove cgroup: %w", err)
+	}
+
+	return nil
+}
+
 // FD returns the cgroup file descriptor used for atomic placement using
 // SysProcAttr.CgroupFD.
 func (c *Cgroup) FD() *os.File {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	return c.fd
 }
 
@@ -200,7 +231,7 @@ func detectRootDevice() (string, error) {
 	}
 
 	if isPartition(devicePath) {
-		return readDeviceID(filepath.Dir(devicePath))
+		return getDeviceID(filepath.Dir(devicePath))
 	}
 
 	return deviceID, nil
@@ -209,7 +240,7 @@ func detectRootDevice() (string, error) {
 // getRootDeviceID returns device ID in 'major:minor' format for the root
 // filesystem.
 func getRootDeviceID() (string, error) {
-	mountinfo, err := os.ReadFile(procMountinfo)
+	mountinfo, err := os.ReadFile(procSelfMountinfo)
 	if err != nil {
 		return "", fmt.Errorf("read mountinfo: %w", err)
 	}
@@ -228,7 +259,7 @@ func getRootDeviceID() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("root device not found in %s", procMountinfo)
+	return "", fmt.Errorf("root device not found in %s", procSelfMountinfo)
 }
 
 func getDevicePath(deviceID string) (string, error) {
@@ -252,7 +283,7 @@ func isPartition(devicePath string) bool {
 	return err == nil
 }
 
-func readDeviceID(devicePath string) (string, error) {
+func getDeviceID(devicePath string) (string, error) {
 	devData, err := os.ReadFile(filepath.Join(devicePath, "dev"))
 	if err != nil {
 		return "", fmt.Errorf("read device id from %s: %w", devicePath, err)
@@ -261,9 +292,34 @@ func readDeviceID(devicePath string) (string, error) {
 	return string(bytes.TrimSpace(devData)), nil
 }
 
-// ValidateCgroupRoot checks if the provided cgroupRoot is a vlaid cgroup v2
+// getCgroupRoot determines the root cgroup for cgroups v2 by finding the first
+// cgroup2 entry in /proc/self/mountinfo.
+func getCgroupRoot() (string, error) {
+	mountinfo, err := os.ReadFile(procSelfMountinfo)
+	if err != nil {
+		return "", fmt.Errorf("read mountinfo: %w", err)
+	}
+
+	for line := range strings.SplitSeq(string(mountinfo), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 9 {
+			continue
+		}
+
+		fs := fields[8]
+
+		if fs == "cgroup2" {
+			mountPoint := fields[4]
+			return mountPoint, nil
+		}
+	}
+
+	return "", errors.New("cgroup2 mount point not found")
+}
+
+// validateCgroupRoot checks if the provided cgroupRoot is a vlaid cgroup v2
 // root by confirming the presence of a cgroup.controllers file.
-func ValidateCgroupRoot(cgroupRoot string) error {
+func validateCgroupRoot(cgroupRoot string) error {
 	controllersPath := filepath.Join(cgroupRoot, "cgroup.controllers")
 
 	if _, err := os.Stat(controllersPath); err != nil {

@@ -2,6 +2,10 @@
 test:
 	sudo -E go test -race -timeout 10s ./...
 
+.PHONY: test-e2e
+test-e2e:
+	sudo -E go test -tags=e2e -timeout=30s ./...
+
 .PHONY: testv
 testv:
 	sudo -E go test -v -race -timeout 10s ./...
@@ -33,6 +37,10 @@ proto:
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/v1/job.proto
 
+.PHONY: proto-clean
+proto-clean:
+	rm api/v1/*.pb.go
+
 .PHONY: build-cli
 build-cli:
 	go build -o ./tmp/bin/jobctl -v ./cmd/jobctl
@@ -47,7 +55,7 @@ build-server:
 
 .PHONY: run-server
 run-server: build-server
-	sudo ./tmp/bin/jobserver
+	sudo -E ./tmp/bin/jobserver
 
 .PHONY: build
 build: build-server build-cli

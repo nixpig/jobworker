@@ -111,7 +111,7 @@ func (s *server) RunJob(
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
 	if req.Program == "" {
-		return nil, status.Error(codes.InvalidArgument, "Program is empty")
+		return nil, status.Error(codes.InvalidArgument, "program is empty")
 	}
 
 	id, err := s.manager.RunJob(
@@ -136,7 +136,7 @@ func (s *server) StopJob(
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "ID is empty")
+		return nil, status.Error(codes.InvalidArgument, "id is empty")
 	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
@@ -151,7 +151,7 @@ func (s *server) QueryJob(
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "ID is empty")
+		return nil, status.Error(codes.InvalidArgument, "id is empty")
 	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
@@ -177,7 +177,7 @@ func (s *server) StreamJobOutput(
 	stream api.JobService_StreamJobOutputServer,
 ) error {
 	if req.Id == "" {
-		return status.Error(codes.InvalidArgument, "ID is empty")
+		return status.Error(codes.InvalidArgument, "id is empty")
 	}
 
 	outputReader, err := s.manager.StreamJobOutput(req.Id)

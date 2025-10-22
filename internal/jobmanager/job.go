@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync/atomic"
 	"syscall"
 
@@ -20,7 +19,6 @@ type Job struct {
 	id          string
 	state       AtomicJobState
 	interrupted atomic.Bool
-	cgroupRoot  string
 
 	cmd            *exec.Cmd
 	cgroup         *cgroups.Cgroup
@@ -47,7 +45,6 @@ func NewJob(
 	id string,
 	program string,
 	args []string,
-	cgroupRoot string,
 	limits *cgroups.ResourceLimits,
 ) (*Job, error) {
 	if program == "" {
@@ -67,7 +64,6 @@ func NewJob(
 	j := &Job{
 		id:             id,
 		cmd:            cmd,
-		cgroupRoot:     cgroupRoot,
 		limits:         limits,
 		outputStreamer: output.NewStreamer(pr),
 		pipeWriter:     pw,
@@ -99,12 +95,12 @@ func (j *Job) Start() (err error) {
 		}
 	}()
 
-	cg, err := cgroups.CreateCgroup(j.cgroupRoot, "job-manager-"+j.id, j.limits)
+	cgroup, err := cgroups.CreateCgroup("job-manager-"+j.id, j.limits)
 	if err != nil {
 		return fmt.Errorf("create cgroup: %w", err)
 	}
 
-	j.cgroup = cg
+	j.cgroup = cgroup
 
 	fd := j.cgroup.FD()
 	j.cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -145,7 +141,7 @@ func (j *Job) Stop() error {
 	// TODO: Implement graceful shutdown for production:
 	// (SIGTERM -> timeout -> SIGKILL)
 	// For now, just let cgroup.kill SIGKILL all processes immediately.
-	return j.killCgroup()
+	return j.cgroup.Kill()
 }
 
 // ID returns the ID of the Job.
@@ -193,16 +189,4 @@ func (j *Job) Status() *JobStatus {
 		Signal:      sig,
 		Interrupted: j.interrupted.Load(),
 	}
-}
-
-func (j *Job) killCgroup() error {
-	if err := os.WriteFile(
-		filepath.Join(j.cgroup.Path(), "cgroup.kill"),
-		[]byte("1"),
-		0644,
-	); err != nil {
-		return fmt.Errorf("write cgroup.kill: %w", err)
-	}
-
-	return nil
 }

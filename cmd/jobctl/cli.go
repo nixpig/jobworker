@@ -39,10 +39,6 @@ func newCLI() *cli {
 	return &cli{}
 }
 
-// TODO: Consider adding integration tests (not done for this prototype as
-// already have pretty comprehensive integration tests for the server).
-// Unit tests for the CLI would be so shallow (just testing Cobra/gRPC) not
-// really adding any value.
 func (c *cli) rootCmd() *cobra.Command {
 	cfg := &config{}
 
@@ -57,7 +53,6 @@ func (c *cli) rootCmd() *cobra.Command {
 				KeyPath:    cfg.keyPath,
 				CACertPath: cfg.caCertPath,
 				ServerName: cfg.serverHostname,
-				Server:     false,
 			})
 			if err != nil {
 				return err
@@ -139,21 +134,18 @@ func (c *cli) startCmd() *cobra.Command {
 		Example: "  jobctl start tail -f server.log",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			program := args[0]
-			arguments := args[1:]
-
-			res, err := c.client.RunJob(
+			resp, err := c.client.RunJob(
 				cmd.Context(),
 				&api.RunJobRequest{
-					Program: program,
-					Args:    arguments,
+					Program: args[0],
+					Args:    args[1:],
 				},
 			)
 			if err != nil {
 				return mapError(err)
 			}
 
-			cmd.OutOrStdout().Write(fmt.Appendf(nil, "%s\n", res.Id))
+			cmd.OutOrStdout().Write(fmt.Appendf(nil, "%s\n", resp.Id))
 
 			return nil
 		},
@@ -175,11 +167,9 @@ func (c *cli) statusCmd() *cobra.Command {
 		Example: "  jobctl status 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-
-			res, err := c.client.QueryJob(
+			resp, err := c.client.QueryJob(
 				cmd.Context(),
-				&api.QueryJobRequest{Id: id},
+				&api.QueryJobRequest{Id: args[0]},
 			)
 			if err != nil {
 				return mapError(err)
@@ -193,10 +183,10 @@ func (c *cli) statusCmd() *cobra.Command {
 			fmt.Fprintf(
 				w,
 				"%s\t%d\t%s\t%t\n",
-				mapState(res.State),
-				res.ExitCode,
-				res.Signal,
-				res.Interrupted,
+				mapState(resp.State),
+				resp.ExitCode,
+				resp.Signal,
+				resp.Interrupted,
 			)
 
 			w.Flush()
@@ -215,11 +205,9 @@ func (c *cli) stopCmd() *cobra.Command {
 		Example: "  jobctl stop 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-
 			if _, err := c.client.StopJob(
 				cmd.Context(),
-				&api.StopJobRequest{Id: id},
+				&api.StopJobRequest{Id: args[0]},
 			); err != nil {
 				return mapError(err)
 			}
@@ -238,8 +226,6 @@ func (c *cli) streamCmd() *cobra.Command {
 		Example: "  jobctl stream 9302033c-f8f7-4b6e-9363-a7aa201cce1b",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-
 			ctx, cancel := signal.NotifyContext(
 				cmd.Context(),
 				syscall.SIGTERM,
@@ -249,14 +235,14 @@ func (c *cli) streamCmd() *cobra.Command {
 
 			stream, err := c.client.StreamJobOutput(
 				ctx,
-				&api.StreamJobOutputRequest{Id: id},
+				&api.StreamJobOutputRequest{Id: args[0]},
 			)
 			if err != nil {
 				return mapError(err)
 			}
 
 			for {
-				res, err := stream.Recv()
+				resp, err := stream.Recv()
 				if err != nil {
 					if err == io.EOF {
 						break
@@ -269,7 +255,7 @@ func (c *cli) streamCmd() *cobra.Command {
 					return mapError(err)
 				}
 
-				cmd.OutOrStdout().Write(res.Output)
+				cmd.OutOrStdout().Write(resp.Output)
 			}
 
 			return nil
