@@ -54,10 +54,6 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		return nil, fmt.Errorf("get cgroup root: %w", err)
 	}
 
-	if err := validateCgroupRoot(root); err != nil {
-		return nil, err
-	}
-
 	cg = &Cgroup{
 		name: name,
 		path: filepath.Join(root, name),
@@ -327,16 +323,4 @@ func getCgroupRoot() (string, error) {
 	}
 
 	return "", errors.New("cgroup2 mount point not found")
-}
-
-// validateCgroupRoot checks if the provided cgroupRoot is a vlaid cgroup v2
-// root by confirming the presence of a cgroup.controllers file.
-func validateCgroupRoot(cgroupRoot string) error {
-	controllersPath := filepath.Join(cgroupRoot, "cgroup.controllers")
-
-	if _, err := os.Stat(controllersPath); err != nil {
-		return fmt.Errorf("cgroup root not valid at %s: %w", cgroupRoot, err)
-	}
-
-	return nil
 }
