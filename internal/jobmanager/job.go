@@ -102,7 +102,12 @@ func (j *Job) Start() (err error) {
 
 	j.cgroup = cgroup
 
-	fd := j.cgroup.FD()
+	fd, err := j.cgroup.FD()
+	if err != nil {
+		return fmt.Errorf("open cgroup fd: %w", err)
+	}
+	defer fd.Close()
+
 	j.cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: true,
 		CgroupFD:    int(fd.Fd()),
@@ -112,7 +117,6 @@ func (j *Job) Start() (err error) {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
-	j.cgroup.CloseFD()
 	j.pipeWriter.Close()
 	j.state.Store(JobStateStarted)
 

@@ -33,7 +33,6 @@ type ResourceLimits struct {
 type Cgroup struct {
 	name string
 	path string
-	fd   *os.File
 
 	mu sync.Mutex
 }
@@ -82,13 +81,6 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 			return nil, fmt.Errorf("apply cgroup limits: %w", err)
 		}
 	}
-
-	fd, err := os.Open(cg.path)
-	if err != nil {
-		return nil, fmt.Errorf("open cgroup dir: %w", err)
-	}
-
-	cg.fd = fd
 
 	return cg, nil
 }
@@ -153,29 +145,6 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
-// closeFD closes the file descriptor of the cgroup.
-func (c *Cgroup) closeFD() error {
-	if c.fd != nil {
-		err := c.fd.Close()
-
-		c.fd = nil
-
-		if err != nil {
-			return fmt.Errorf("close cgroup fd: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// CloseFD provides synchronised access to close the file descriptor.
-func (c *Cgroup) CloseFD() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.closeFD()
-}
-
 // Kill kills all processes in the cgroup by writing to `cgroup.kill`.
 func (c *Cgroup) Kill() error {
 	c.mu.Lock()
@@ -199,10 +168,6 @@ func (c *Cgroup) Destroy() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Ignore close error and just go ahead and remove. Log in future if/when
-	// observability comes into scope.
-	c.closeFD()
-
 	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove cgroup: %w", err)
 	}
@@ -212,11 +177,8 @@ func (c *Cgroup) Destroy() error {
 
 // FD returns the cgroup file descriptor used for atomic placement using
 // SysProcAttr.CgroupFD.
-func (c *Cgroup) FD() *os.File {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.fd
+func (c *Cgroup) FD() (*os.File, error) {
+	return os.Open(c.path)
 }
 
 func (c *Cgroup) Name() string {
