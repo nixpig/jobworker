@@ -4,29 +4,21 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	api "github.com/nixpig/jobworker/api/v1"
+	"github.com/nixpig/jobworker/certs"
 	"github.com/nixpig/jobworker/internal/jobmanager"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
-)
-
-const (
-	// NOTE: Generate all cert files with: `make certs`.
-	caCertPath       = "../../certs/ca.crt"
-	serverCertPath   = "../../certs/server.crt"
-	serverKeyPath    = "../../certs/server.key"
-	operatorCertPath = "../../certs/client-operator.crt"
-	operatorKeyPath  = "../../certs/client-operator.key"
-	viewerCertPath   = "../../certs/client-viewer.crt"
-	viewerKeyPath    = "../../certs/client-viewer.key"
 )
 
 // setupTestServerAndClients starts a test server and returns an operator
@@ -36,6 +28,38 @@ func setupTestServerAndClients(
 	t *testing.T,
 ) (api.JobServiceClient, api.JobServiceClient) {
 	t.Helper()
+
+	certDir := t.TempDir()
+
+	certFiles := []string{
+		"ca.crt",
+		"server.crt",
+		"server.key",
+		"client-operator.crt",
+		"client-operator.key",
+		"client-viewer.crt",
+		"client-viewer.key",
+	}
+
+	for _, filename := range certFiles {
+		data, err := certs.FS.ReadFile(filename)
+		if err != nil {
+			t.Fatalf("read cert %s: %v", filename, err)
+		}
+
+		path := filepath.Join(certDir, filename)
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			t.Fatalf("save cert %s: %v", filename, err)
+		}
+	}
+
+	caCertPath := filepath.Join(certDir, "ca.crt")
+	serverCertPath := filepath.Join(certDir, "server.crt")
+	serverKeyPath := filepath.Join(certDir, "server.key")
+	operatorCertPath := filepath.Join(certDir, "client-operator.crt")
+	operatorKeyPath := filepath.Join(certDir, "client-operator.key")
+	viewerCertPath := filepath.Join(certDir, "client-viewer.crt")
+	viewerKeyPath := filepath.Join(certDir, "client-viewer.key")
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

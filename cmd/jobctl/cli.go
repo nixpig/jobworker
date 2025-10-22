@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"text/tabwriter"
 
-	"github.com/casbin/casbin/errors"
 	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"github.com/spf13/cobra"

@@ -49,6 +49,9 @@ build-server:
 run-server: build-server
 	sudo ./tmp/bin/jobserver
 
+.PHONY: build
+build: build-server build-cli
+
 .PHONY: certs-clean
 certs-clean:
 	@rm -rf certs
