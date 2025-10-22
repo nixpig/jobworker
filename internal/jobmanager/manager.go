@@ -26,10 +26,10 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager ready to run Jobs.
-func NewManager() (*Manager, error) {
+func NewManager() *Manager {
 	return &Manager{
 		jobs: make(map[string]*Job),
-	}, nil
+	}
 }
 
 // RunJob creates and starts a new Job with the given program and args. It

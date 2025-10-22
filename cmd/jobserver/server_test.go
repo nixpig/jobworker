@@ -72,10 +72,7 @@ func setupTestServerAndClients(
 		listener.Close()
 	})
 
-	manager, err := jobmanager.NewManager()
-	if err != nil {
-		t.Errorf("expected not to get error: got '%v'", err)
-	}
+	manager := jobmanager.NewManager()
 
 	t.Cleanup(func() {
 		manager.Shutdown()

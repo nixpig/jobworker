@@ -33,10 +33,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test run job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		id := runTestJobInManager(t, m, "echo", []string{"Hello, world!"})
 
@@ -48,10 +45,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stop long-running job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		id := runTestJobInManager(t, m, "sleep", []string{"5"})
 
@@ -93,10 +87,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test stream job output", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		id := runTestJobInManager(
 			t,
@@ -137,10 +128,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test shutdown job manager", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		id := runTestJobInManager(t, m, "sleep", []string{"10"})
 
@@ -169,10 +157,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test operations on non-existent job", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		if _, err := m.QueryJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
 			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
@@ -194,10 +179,7 @@ func TestJobManager(t *testing.T) {
 	t.Run("Test multiple jobs", func(t *testing.T) {
 		t.Parallel()
 
-		m, err := jobmanager.NewManager()
-		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
-		}
+		m := jobmanager.NewManager()
 
 		ids := make([]string, 3)
 		for i := range len(ids) {

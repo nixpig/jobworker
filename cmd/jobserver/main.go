@@ -34,11 +34,7 @@ func run() error {
 
 	logger := newLogger(cfg.debug)
 
-	manager, err := jobmanager.NewManager()
-	if err != nil {
-		logger.Error("failed to create manager", "err", err)
-		return fmt.Errorf("failed to create manager: %w", err)
-	}
+	manager := jobmanager.NewManager()
 
 	server := newServer(manager, logger, cfg)
 
