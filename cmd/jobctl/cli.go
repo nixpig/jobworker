@@ -146,7 +146,7 @@ func (c *cli) startCmd() *cobra.Command {
 				return mapError(err)
 			}
 
-			cmd.OutOrStdout().Write(fmt.Appendf(nil, "%s\n", resp.Id))
+			cmd.OutOrStdout().Write([]byte(resp.Id + "\n"))
 
 			return nil
 		},

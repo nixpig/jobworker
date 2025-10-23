@@ -96,7 +96,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 		}
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
