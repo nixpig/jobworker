@@ -28,7 +28,7 @@ func cleanupCgroup(t *testing.T, path string) {
 	}
 
 	for {
-		populated, err := isPopulated(path)
+		populated, err := isCgroupPopulated(path)
 		if err != nil {
 			t.Fatalf("failed check if populated: %s", err)
 		}
@@ -49,7 +49,7 @@ func cleanupCgroup(t *testing.T, path string) {
 	}
 }
 
-func isPopulated(path string) (bool, error) {
+func isCgroupPopulated(path string) (bool, error) {
 	eventsData, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -72,7 +72,8 @@ func isPopulated(path string) (bool, error) {
 func TestCgroups(t *testing.T) {
 	t.Parallel()
 
-	testCgroupPath := "/sys/fs/cgroup/cgroup-lifecycle-test-job"
+	testCgroupName := "cgroup-lifecycle-test-job"
+	testCgroupPath := "/sys/fs/cgroup/" + testCgroupName
 
 	cleanupCgroup(t, testCgroupPath)
 
@@ -86,7 +87,7 @@ func TestCgroups(t *testing.T) {
 		}
 
 		cgroup, err := cgroups.CreateCgroup(
-			"cgroup-lifecycle-test-job",
+			testCgroupName,
 			limits,
 		)
 		if err != nil {
