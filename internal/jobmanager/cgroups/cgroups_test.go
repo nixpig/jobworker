@@ -119,10 +119,6 @@ func TestCgroups(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		wg.Go(func() {
-			_ = cgroup.Destroy()
-		})
-
 		if err := cgroup.Kill(); err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
 		}
