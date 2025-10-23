@@ -19,7 +19,7 @@ func runTestJobInManager(
 
 	id, err := m.RunJob(program, args, nil)
 	if err != nil {
-		t.Fatalf("expected not to receive error: got '%v'", err)
+		t.Fatalf("expected run job not to return error: got '%v'", err)
 	}
 
 	return id
@@ -36,7 +36,7 @@ func TestJobManager(t *testing.T) {
 		id := runTestJobInManager(t, m, "echo", []string{"Hello, world!"})
 
 		if _, err := uuid.Parse(id); err != nil {
-			t.Errorf("expected to have valid uuid: got '%v'", err)
+			t.Errorf("expected run job to return UUID: got '%v'", err)
 		}
 	})
 
@@ -49,7 +49,7 @@ func TestJobManager(t *testing.T) {
 
 		status, err := m.QueryJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected query job not to return error: got '%v'", err)
 		}
 
 		testJobState(t, status, &jobmanager.JobStatus{
@@ -59,19 +59,19 @@ func TestJobManager(t *testing.T) {
 		})
 
 		if err := m.StopJob(id); err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected stop job not to return error: got '%v'", err)
 		}
 
 		job, err := m.GetJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected get job not to return error: got '%v'", err)
 		}
 
 		<-job.Done()
 
 		status, err = m.QueryJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected query job not to return error: got '%v'", err)
 		}
 
 		testJobState(t, status, &jobmanager.JobStatus{
@@ -96,19 +96,19 @@ func TestJobManager(t *testing.T) {
 
 		job, err := m.GetJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected get job not to return error: got '%v'", err)
 		}
 
 		<-job.Done()
 
 		outputReader, err := m.StreamJobOutput(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected stream job not to return error: got '%v'", err)
 		}
 
 		gotOutput, err := io.ReadAll(outputReader)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected read all not to return error: got '%v'", err)
 		}
 
 		outputReader.Close()
@@ -116,7 +116,7 @@ func TestJobManager(t *testing.T) {
 		wantOutput := "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n"
 		if string(gotOutput) != wantOutput {
 			t.Errorf(
-				"expected output: got '%s', want '%s'",
+				"expected stream job output: got '%s', want '%s'",
 				gotOutput,
 				wantOutput,
 			)
@@ -134,14 +134,14 @@ func TestJobManager(t *testing.T) {
 
 		job, err := m.GetJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected get job not to return error: got '%v'", err)
 		}
 
 		<-job.Done()
 
 		status, err := m.QueryJob(id)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf("expected query job not to return error: got '%v'", err)
 		}
 
 		testJobState(t, status, &jobmanager.JobStatus{
@@ -158,19 +158,28 @@ func TestJobManager(t *testing.T) {
 		m := jobmanager.NewManager()
 
 		if _, err := m.QueryJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
-			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
+			t.Errorf(
+				"expected query job to return ErrJobNotFound: got '%v'",
+				err,
+			)
 		}
 
 		if err := m.StopJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
-			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
+			t.Errorf(
+				"expected stop job to return ErrJobNotFound: got '%v'",
+				err,
+			)
 		}
 
 		if _, err := m.StreamJobOutput("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
-			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
+			t.Errorf(
+				"expected stream job output to return ErrJobNotFound: got '%v'",
+				err,
+			)
 		}
 
 		if _, err := m.GetJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
-			t.Errorf("expected to receive ErrJobNotFound: got '%v'", err)
+			t.Errorf("expected get job to return ErrJobNotFound: got '%v'", err)
 		}
 	})
 
@@ -187,11 +196,18 @@ func TestJobManager(t *testing.T) {
 		for _, id := range ids {
 			status, err := m.QueryJob(id)
 			if err != nil {
-				t.Errorf("expected not to receive error: got '%v'", err)
+				t.Errorf(
+					"expected query job not to return error: got '%v'",
+					err,
+				)
 			}
 
 			if status.State != jobmanager.JobStateStarted {
-				t.Errorf("expected job to be started: got '%s'", status.State)
+				t.Errorf(
+					"expected job state: got '%s', want '%s'",
+					status.State,
+					jobmanager.JobStateStarted,
+				)
 			}
 		}
 	})

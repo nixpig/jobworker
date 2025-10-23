@@ -36,8 +36,8 @@ const (
 )
 
 // NOTE: This slice needs to be kept in sync with any changes to the JobState
-// values. Ideally, we'd only ever be 'appending' states to maintain a
-// consistent API, so wouldn't expect this to break for existing JobStates.
+// values. Ideally, we'd only ever be 'appending' states to prevent breaking
+// the existing API, so wouldn't expect this to break for existing JobStates.
 var jobStates = []string{
 	"Unknown",
 	"Created",

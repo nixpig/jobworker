@@ -28,6 +28,18 @@ const (
 	streamBufferSize = 4096
 )
 
+var (
+	validationErrorID = status.Error(
+		codes.InvalidArgument,
+		"ID is required",
+	)
+	validationErrorProgram = status.Error(
+		codes.InvalidArgument,
+		"Program is required",
+	)
+	notAuthorisedError = status.Error(codes.PermissionDenied, "Not authorised")
+)
+
 type server struct {
 	api.UnimplementedJobServiceServer
 
@@ -98,6 +110,7 @@ func (s *server) shutdown() {
 
 	select {
 	case <-doneCh:
+	// TODO: Make shutdown timeout configurable via server config.
 	case <-time.After(10 * time.Second):
 		s.logger.Warn("graceful shutdown timed out, forcing stop")
 		grpcServer.Stop()
@@ -111,7 +124,7 @@ func (s *server) RunJob(
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
 	if req.Program == "" {
-		return nil, status.Error(codes.InvalidArgument, "program is empty")
+		return nil, validationErrorProgram
 	}
 
 	id, err := s.manager.RunJob(
@@ -136,7 +149,7 @@ func (s *server) StopJob(
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is empty")
+		return nil, validationErrorID
 	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
@@ -151,7 +164,7 @@ func (s *server) QueryJob(
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is empty")
+		return nil, validationErrorID
 	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
@@ -177,7 +190,7 @@ func (s *server) StreamJobOutput(
 	stream api.JobService_StreamJobOutputServer,
 ) error {
 	if req.Id == "" {
-		return status.Error(codes.InvalidArgument, "id is empty")
+		return validationErrorID
 	}
 
 	outputReader, err := s.manager.StreamJobOutput(req.Id)
@@ -237,7 +250,7 @@ func (s *server) mapError(logMsg string, err error) error {
 
 	default:
 		s.logger.Error(logMsg, "err", err)
-		return status.Error(codes.Internal, "internal server error")
+		return status.Error(codes.Internal, "Internal server error")
 	}
 }
 
@@ -251,7 +264,7 @@ func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	) (any, error) {
 		if err := auth.Authorise(ctx, info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
-			return nil, status.Error(codes.PermissionDenied, "not authorised")
+			return nil, notAuthorisedError
 		}
 
 		return handler(ctx, req)
@@ -268,7 +281,7 @@ func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 	) error {
 		if err := auth.Authorise(ss.Context(), info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
-			return status.Error(codes.PermissionDenied, "not authorised")
+			return notAuthorisedError
 		}
 
 		return handler(srv, ss)

@@ -23,12 +23,12 @@ func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 		nil,
 	)
 	if err != nil {
-		t.Fatalf("expected not to receive error: got '%v'", err)
+		t.Fatalf("expected new job not to return error: got '%v'", err)
 	}
 
 	gotID := job.ID()
 	if gotID != id {
-		t.Errorf("expected job id: got '%s', want '%s'", gotID, id)
+		t.Errorf("expected new job id: got '%s', want '%s'", gotID, id)
 	}
 
 	return job
@@ -40,7 +40,7 @@ func runTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 	job := newTestJob(t, program, args)
 
 	if err := job.Start(); err != nil {
-		t.Fatalf("expected not to receive error: got '%v'", err)
+		t.Fatalf("expected start job not to return error: got '%v'", err)
 	}
 
 	return job
@@ -151,7 +151,7 @@ func TestJob(t *testing.T) {
 		})
 
 		if err := job.Stop(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected job stop not to return error: got '%v'", err)
 		}
 
 		<-job.Done()
@@ -199,7 +199,7 @@ func TestJob(t *testing.T) {
 		job := newTestJob(t, "non-existent-program", []string{})
 
 		if err := job.Start(); err == nil {
-			t.Errorf("expected to receive error: got '%v'", err)
+			t.Errorf("expected job start to return error: got '%v'", err)
 		}
 	})
 
@@ -209,32 +209,41 @@ func TestJob(t *testing.T) {
 		job := newTestJob(t, "sleep", []string{"30"})
 
 		if err := job.Start(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected job start not to return error: got '%v'", err)
 		}
 
 		if err := job.Start(); !errors.As(
 			err,
 			&jobmanager.InvalidStateError{},
 		) {
-			t.Errorf("expected to receive InvalidStateError: got '%v'", err)
+			t.Errorf(
+				"expected job start to return InvalidStateError: got '%v'",
+				err,
+			)
 		}
 
 		if err := job.Stop(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected job stop not to return error: got '%v'", err)
 		}
 
 		if err := job.Stop(); !errors.As(
 			err,
 			&jobmanager.InvalidStateError{},
 		) {
-			t.Errorf("expected to receive InvalidStateError: got '%v'", err)
+			t.Errorf(
+				"expected job stop to return InvalidStateError: got '%v'",
+				err,
+			)
 		}
 
 		if err := job.Start(); !errors.As(
 			err,
 			&jobmanager.InvalidStateError{},
 		) {
-			t.Errorf("expected to receive InvalidStateError: got '%v'", err)
+			t.Errorf(
+				"expected job start to return InvalidStateError: got '%v'",
+				err,
+			)
 		}
 	})
 }

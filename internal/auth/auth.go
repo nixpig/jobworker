@@ -4,6 +4,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -51,16 +52,19 @@ var MethodPermissions = map[string]Permission{
 
 // GetClientIdentity extracts and returns the Common Name (CN) and
 // OrganizationalUnit (OU) fields from a client's mTLS certificate on the given
-// gRPC context
+// gRPC context.
+//
+// CN is used as the client's identity.
+// OU is used as the client's role.
 func GetClientIdentity(ctx context.Context) (string, string, error) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
-		return "", "", fmt.Errorf("failed to get peer info from context")
+		return "", "", errors.New("failed to get peer info from context")
 	}
 
 	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
 	if !ok {
-		return "", "", fmt.Errorf("failed to get TLS info from peer auth info")
+		return "", "", errors.New("failed to get TLS info from peer auth info")
 	}
 
 	cert := tlsInfo.State.VerifiedChains[0][0]
@@ -88,11 +92,11 @@ func IsAuthorised(role Role, method string) error {
 
 	permissions, ok := rolePermissions[role]
 	if !ok {
-		return fmt.Errorf("specified role not in role permissions")
+		return errors.New("specified role not in role permissions")
 	}
 
 	if !slices.Contains(permissions, requiredPermissions) {
-		return fmt.Errorf("required permission not in permissions for role")
+		return errors.New("required permission not in permissions for role")
 	}
 
 	return nil

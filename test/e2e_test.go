@@ -23,6 +23,9 @@ type testEnv struct {
 	serverPath string
 }
 
+// NOTE: Relative paths are used to determine the source locations to build
+// the CLI and server binaries. Running this test from anywhere that breaks
+// those relative paths will not work.
 func setupTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
@@ -127,6 +130,7 @@ func (env *testEnv) runCLI(
 		"--key-path", filepath.Join(env.certDir, "client-operator.key"),
 		"--ca-cert-path", filepath.Join(env.certDir, "ca.crt"),
 	}
+
 	cliArgs = append(cliArgs, args...)
 
 	cmd := exec.Command(env.cliPath, cliArgs...)
@@ -145,26 +149,23 @@ func (env *testEnv) runCLI(
 // TODO: For a production solution, we might consider a more comprehensive E2E
 // test suite. For this prototype, a quick smoke test to verify CLI is able to
 // communicate with the server and the available commands run should suffice.
-// NOTE: Relative paths are used to determine the source locations to build
-// the CLI and server binaries. Running this test from anywhere that breaks
-// those relative paths will not work.
 func TestBasicE2E(t *testing.T) {
 	env := setupTestEnv(t)
 
 	t.Run("Test job lifecycle", func(t *testing.T) {
 		startStdout, _, err := env.runCLI(t, "start", "echo", "Hello, world!")
 		if err != nil {
-			t.Fatalf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected start not to return error: got '%v'", err)
 		}
 
 		jobID := strings.TrimSpace(startStdout)
 		if _, err := uuid.Parse(jobID); err != nil {
-			t.Errorf("expected to have valid uuid: got '%v'", err)
+			t.Errorf("expected start to return UUID: got '%v'", err)
 		}
 
 		statusStdout, _, err := env.runCLI(t, "status", jobID)
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected status not to return error: got '%v'", err)
 		}
 
 		// TODO: If we built out this E2E test suite, we'd add a 'waitForStatus'
@@ -173,21 +174,27 @@ func TestBasicE2E(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		if !strings.Contains(statusStdout, "Stopped") {
-			t.Errorf("job should be Stopped: got '%s'", statusStdout)
+			t.Errorf(
+				"expected job state: got '%s', want 'Stopped'",
+				statusStdout,
+			)
 		}
 
 		streamStdout, _, err := env.runCLI(t, "stream", jobID)
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected stream not to return error: got '%v'", err)
 		}
 
 		if !strings.Contains(streamStdout, "Hello, world!") {
-			t.Errorf("expected stream text: got '%s'", streamStdout)
+			t.Errorf(
+				"expected stream text: got '%s', want 'Hello, world!'",
+				streamStdout,
+			)
 		}
 
 		_, stopStderr, err := env.runCLI(t, "stop", jobID)
 		if err == nil {
-			t.Error("expected to receive error")
+			t.Error("expected stop to return error")
 		}
 		if !strings.Contains(
 			stopStderr,

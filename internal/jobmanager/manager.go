@@ -1,6 +1,7 @@
 package jobmanager
 
 import (
+	"fmt"
 	"io"
 	"maps"
 	"slices"
@@ -25,15 +26,16 @@ type Manager struct {
 	mu sync.Mutex
 }
 
-// NewManager creates a new Manager ready to run Jobs.
+// NewManager creates a Manager ready to run Jobs.
 func NewManager() *Manager {
 	return &Manager{
 		jobs: make(map[string]*Job),
 	}
 }
 
-// RunJob creates and starts a new Job with the given program and args. It
-// returns the Job's unique ID.
+// RunJob creates and starts a Job with the given program and args. The Job
+// is started in a new cgroup with the given limits applied. It returns the
+// Job's unique ID.
 func (m *Manager) RunJob(
 	program string,
 	args []string,
@@ -43,11 +45,11 @@ func (m *Manager) RunJob(
 
 	job, err := NewJob(id, program, args, limits)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("new job: %w", err)
 	}
 
 	if err := job.Start(); err != nil {
-		return "", err
+		return "", fmt.Errorf("start job: %w", err)
 	}
 
 	m.mu.Lock()
