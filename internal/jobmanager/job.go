@@ -61,13 +61,15 @@ func NewJob(
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
+	done := make(chan struct{})
+
 	j := &Job{
 		id:             id,
 		cmd:            cmd,
 		limits:         limits,
-		outputStreamer: output.NewStreamer(pr),
+		outputStreamer: output.NewStreamer(pr, done),
 		pipeWriter:     pw,
-		done:           make(chan struct{}),
+		done:           done,
 	}
 
 	j.state.Store(JobStateCreated)

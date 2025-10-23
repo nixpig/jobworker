@@ -6,6 +6,7 @@ package output
 import (
 	"io"
 	"sync"
+	"time"
 )
 
 const (
@@ -30,18 +31,20 @@ type Streamer struct {
 	// clients.
 	buffer []byte
 
-	done chan struct{}
-	mu   sync.Mutex
-	cond sync.Cond
+	jobDone <-chan struct{}
+	done    chan struct{}
+	mu      sync.Mutex
+	cond    sync.Cond
 }
 
 // NewStreamer creates a Streamer that reads from source and immediately begins
 // processing. It continues processing until it recieves an io.EOF error from
 // source.
-func NewStreamer(source io.ReadCloser) *Streamer {
+func NewStreamer(source io.ReadCloser, jobDone chan struct{}) *Streamer {
 	s := &Streamer{
-		buffer: make([]byte, 0, initialBufferCapacity),
-		done:   make(chan struct{}),
+		buffer:  make([]byte, 0, initialBufferCapacity),
+		done:    make(chan struct{}),
+		jobDone: jobDone,
 	}
 
 	s.cond.L = &s.mu
@@ -71,28 +74,49 @@ func (s *Streamer) processOutput(source io.ReadCloser) {
 	// future.
 	buffer := make([]byte, readBufferSize)
 
-	for {
-		n, err := source.Read(buffer)
-		if n > 0 {
-			s.mu.Lock()
+	errCh := make(chan error, 1)
 
-			s.buffer = append(s.buffer, buffer[:n]...)
-
-			s.cond.Broadcast()
-
-			s.mu.Unlock()
-		}
-
-		if err != nil {
-			if err == io.EOF {
-				return
+	go func() {
+		for {
+			n, err := source.Read(buffer)
+			if n > 0 {
+				s.mu.Lock()
+				s.buffer = append(s.buffer, buffer[:n]...)
+				s.cond.Broadcast()
+				s.mu.Unlock()
 			}
 
-			// TODO: Review whether to do anything with non-EOF read errors. For now,
-			// just returning and letting the stream end seems okay. In a production
-			// system we'd want to at least log them.
-			return
+			if err != nil {
+				errCh <- err
+				return
+			}
 		}
+	}()
+
+	// Wait for either the source EOF/error or the Job to complete.
+	select {
+	// If the source reaches EOF/error before the Job is complete, then wait for
+	// the Job to complete before returning to close the Streamer.
+	case <-errCh:
+		// TODO: Review whether to do anything with non-EOF read errors. For now,
+		// just waiting for the Job to complete and letting the stream end seems
+		// okay. In a production system we'd want to at least log them.
+		<-s.jobDone
+		return
+	// If the Job finishes before the source reaches EOF/error, then set a read
+	// deadline on the source and wait for EOF/error.
+	case <-s.jobDone:
+		if rd, ok := source.(interface {
+			SetReadDeadline(time.Time) error
+		}); ok {
+			rd.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		} else {
+			// Force close if source doesn't implement SetReadDeadline.
+			// os.Pipe does but tests use io.NopCloser.
+			source.Close()
+		}
+
+		<-errCh
 	}
 }
 
