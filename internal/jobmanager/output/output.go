@@ -109,7 +109,9 @@ func (s *Streamer) processOutput(source io.ReadCloser) {
 		if rd, ok := source.(interface {
 			SetReadDeadline(time.Time) error
 		}); ok {
-			rd.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			if err := rd.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+				source.Close()
+			}
 		} else {
 			// Force close if source doesn't implement SetReadDeadline.
 			// os.Pipe does but tests use io.NopCloser.
