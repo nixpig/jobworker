@@ -6,16 +6,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -199,7 +195,10 @@ func (c *Cgroup) Destroy() error {
 		}
 	}
 
-	c.waitForEmpty(1 * time.Second)
+	// TODO: Make the timeout and interval configurable.
+	if err := c.waitForEmpty(10*time.Second, 50*time.Millisecond); err != nil {
+		return fmt.Errorf("wait for empty cgroup: %w", err)
+	}
 
 	if err := os.RemoveAll(c.path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove cgroup: %w", err)
@@ -222,108 +221,53 @@ func (c *Cgroup) Path() string {
 	return c.path
 }
 
-func (c *Cgroup) waitForEmpty(timeout time.Duration) error {
-	slog.Info("wait for empty", "timeout", timeout)
-	populatedCount, err := c.getPopulatedCount()
-	if err != nil {
-		return fmt.Errorf("initial get populated count in wait: %w", err)
-	}
-
-	slog.Info("initial populated count", "count", populatedCount)
-	if populatedCount == 0 {
-		return nil
-	}
-
-	eventsFile, err := os.Open(filepath.Join(c.path, "cgroup.events"))
-	if err != nil {
-		return fmt.Errorf("open events file path: %w", err)
-	}
-	defer eventsFile.Close()
-
-	fd := int(eventsFile.Fd())
-
-	slog.Info("opened cgroup.events", "fd", fd)
-
-	pollFDs := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLPRI}}
-
+// waitForEmpty waits for the cgroup to be empty by polling at a fixed interval
+// until the given timeout is reached. When the cgroup is empty then nil is
+// returned, or if the timeout is reached then an error.
+func (c *Cgroup) waitForEmpty(
+	timeout time.Duration,
+	interval time.Duration,
+) error {
 	deadline := time.Now().Add(timeout)
 
 	for {
-		timeRemaining := time.Until(deadline)
-		slog.Info("check timeout", "timeRemaining", timeRemaining)
-		if timeRemaining <= 0 {
-			slog.Info("timedout")
-			return fmt.Errorf(
-				"timed out waiting for cgroup to empty: %s",
-				c.path,
-			)
-		}
-
-		slog.Info("poll...")
-		n, err := unix.Poll(pollFDs, int(timeRemaining.Milliseconds()))
+		populated, err := c.isPopulated()
 		if err != nil {
-			slog.Info("failed to poll", "err", err)
-
-			if err == syscall.EINTR {
-				continue
-			}
-
-			return fmt.Errorf("poll syscall: %w", err)
+			return fmt.Errorf("check if populated: %w", err)
 		}
 
-		slog.Info(
-			"POLLIN",
-			"n",
-			n,
-			"revents",
-			pollFDs[0].Revents&unix.POLLIN,
-			"count",
-			populatedCount,
-		)
-		if n > 0 && (pollFDs[0].Revents&unix.POLLIN != 0) {
-			populatedCount, err := c.getPopulatedCount()
-			if err != nil {
-				slog.Info("failed to get populated count")
-				return fmt.Errorf("get populated count in poll: %w", err)
-			}
-
-			slog.Info("get populated count in poll", "count", populatedCount)
-
-			if populatedCount == 0 {
-				slog.Info("populated count at zero")
-				return nil
-			}
+		if !populated {
+			return nil
 		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for empty cgroup: %s", c.path)
+		}
+
+		time.Sleep(interval)
 	}
 }
 
-func (c *Cgroup) getPopulatedCount() (int, error) {
+// isPopulated checks if there are processes in the cgroup by reading the
+// `populated` field from the cgroup.events file.
+func (c *Cgroup) isPopulated() (bool, error) {
 	eventsData, err := os.ReadFile(filepath.Join(c.path, "cgroup.events"))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
+		if !os.IsNotExist(err) {
+			return false, nil
 		}
 
-		return -1, fmt.Errorf("read cgroup.events file data: %w", err)
+		return false, fmt.Errorf("read cgroup.events data: %w", err)
 	}
 
-	populatedCount := 0
-
-	for _, item := range strings.Fields(string(eventsData)) {
-		if strings.HasPrefix(item, "populated=") {
-			populatedValue := strings.TrimPrefix(item, "populated=")
-			value, err := strconv.ParseInt(populatedValue, 10, 64)
-			if err != nil {
-				// TODO: Capture error if/when observability implemented.
-				break
-			}
-
-			populatedCount = int(value)
-			break
+	fields := strings.Fields(string(eventsData))
+	for i, field := range fields {
+		if field == "populated" && i+1 < len(fields) {
+			return fields[i+1] == "1", nil
 		}
 	}
 
-	return populatedCount, nil
+	return false, nil
 }
 
 // detectRootDevice detects the root device and caches the result. Subsequent

@@ -3,9 +3,14 @@ package cgroups_test
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
@@ -23,7 +28,7 @@ func TestCgroups(t *testing.T) {
 		}
 
 		cgroup, err := cgroups.CreateCgroup(
-			"test-job",
+			"cgroup-lifecycle-test-job",
 			limits,
 		)
 		if err != nil {
@@ -31,7 +36,7 @@ func TestCgroups(t *testing.T) {
 		}
 
 		// NOTE: Assuming mounted at /sys/fs/cgroup
-		wantPath := "/sys/fs/cgroup/test-job"
+		wantPath := "/sys/fs/cgroup/cgroup-lifecycle-test-job"
 		if cgroup.Path() != wantPath {
 			t.Errorf(
 				"expected cgroup path: got '%s', want '%s'",
@@ -92,8 +97,43 @@ func TestCgroups(t *testing.T) {
 			)
 		}
 
-		if err := cgroup.Destroy(); err != nil {
+		fd, err := cgroup.FD()
+		if err != nil {
 			t.Errorf("expected not to receive error: got '%v'", err)
+		}
+		defer fd.Close()
+
+		sleepDuration := 5 * time.Second
+
+		cmd := exec.Command("sleep", strconv.Itoa(int(sleepDuration)))
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			UseCgroupFD: true,
+			CgroupFD:    int(fd.Fd()),
+		}
+
+		startTime := time.Now()
+
+		if err := cmd.Start(); err != nil {
+			t.Errorf("expected not to receive error: got '%v'", err)
+		}
+
+		var wg sync.WaitGroup
+
+		wg.Go(func() {
+			_ = cgroup.Destroy()
+		})
+
+		if err := cgroup.Kill(); err != nil {
+			t.Errorf("expected not to receive error: got '%v'", err)
+		}
+
+		wg.Wait()
+
+		if time.Since(startTime) >= sleepDuration {
+			t.Errorf(
+				"expected kill and destroy to complete without waiting for process: took '%v'",
+				time.Since(startTime),
+			)
 		}
 
 		if _, err := os.Stat(cgroup.Path()); !os.IsNotExist(err) {
