@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// Config holds paramters needed to setup TLS for both clients and servers.
+// Config holds parameters needed to setup TLS for both clients and servers.
 type Config struct {
 	CertPath   string
 	KeyPath    string
@@ -16,8 +16,7 @@ type Config struct {
 	// ServerName is the hostname to verify when connecting as a client. Only
 	// used when Server is `false`.
 	ServerName string
-	// Server indicates whether to configure TLS for a server (`true`) or a
-	// client (`false`).
+	// Server indicates whether to configure TLS for a server or client.
 	Server bool
 }
 
@@ -42,7 +41,7 @@ func SetupTLS(config *Config) (*tls.Config, error) {
 
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+		return nil, fmt.Errorf("failed to add CA certificate to pool: %w", err)
 	}
 
 	tlsConfig := &tls.Config{

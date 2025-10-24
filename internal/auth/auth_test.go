@@ -13,6 +13,23 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+func createAuthInfo(t *testing.T, cn, ou string) credentials.TLSInfo {
+	t.Helper()
+
+	cert := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         cn,
+			OrganizationalUnit: []string{ou},
+		},
+	}
+
+	return credentials.TLSInfo{
+		State: tls.ConnectionState{
+			VerifiedChains: [][]*x509.Certificate{{cert}},
+		},
+	}
+}
+
 func TestIsAuthorised(t *testing.T) {
 	t.Parallel()
 
@@ -23,17 +40,17 @@ func TestIsAuthorised(t *testing.T) {
 	}{
 		"Test operator can run job": {
 			role:         auth.RoleOperator,
-			method:       "/job.v1.JobService/RunJob",
+			method:       api.JobService_RunJob_FullMethodName,
 			isAuthorised: true,
 		},
 		"Test operator can stop job": {
 			role:         auth.RoleOperator,
-			method:       "/job.v1.JobService/StopJob",
+			method:       api.JobService_StopJob_FullMethodName,
 			isAuthorised: true,
 		},
 		"Test operator can query job": {
 			role:         auth.RoleOperator,
-			method:       "/job.v1.JobService/QueryJob",
+			method:       api.JobService_QueryJob_FullMethodName,
 			isAuthorised: true,
 		},
 		"Test operator can stream job output": {
@@ -83,13 +100,13 @@ func TestIsAuthorised(t *testing.T) {
 
 			if config.isAuthorised && err != nil {
 				t.Errorf(
-					"expected authorised not to return error: got '%v'",
+					"expected is authorised check not to return error: got '%v'",
 					err,
 				)
 			}
 
 			if !config.isAuthorised && err == nil {
-				t.Errorf("expected not authorised to return error")
+				t.Errorf("expected not authorised check to return error")
 			}
 		})
 	}
@@ -105,9 +122,10 @@ func TestMethodsHavePermissions(t *testing.T) {
 				api.JobService_ServiceDesc.ServiceName,
 				m.MethodName,
 			)
+
 			if _, exists := auth.MethodPermissions[fullMethodName]; !exists {
 				t.Errorf(
-					"gRPC method doesn't have permission assigned: '%v'",
+					"gRPC method missing permission assignment: '%v'",
 					fullMethodName,
 				)
 			}
@@ -119,34 +137,26 @@ func TestGetClientIdentity(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test peer with valid TLS info", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "alice",
-				OrganizationalUnit: []string{"operator"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "alice", "operator")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf(
+				"expected get client identity not to return error: got '%v'",
+				err,
+			)
 		}
 
-		if cn != "alice" {
-			t.Errorf("expected CN: got '%s', want 'alice'", cn)
+		wantCN := "alice"
+		if cn != wantCN {
+			t.Errorf("expected CN: got '%s', want '%s'", cn, wantCN)
 		}
 
-		if ou != "operator" {
-			t.Errorf("expected OU: got '%s', want 'operator'", cn)
+		wantOU := "operator"
+		if ou != wantOU {
+			t.Errorf("expected OU: got '%s', want '%s'", ou, wantOU)
 		}
 	})
 
@@ -157,7 +167,7 @@ func TestGetClientIdentity(t *testing.T) {
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
-			t.Errorf("expected to receive error")
+			t.Errorf("expected get client identity to return error")
 		}
 
 		if cn != "" {
@@ -174,7 +184,7 @@ func TestGetClientIdentity(t *testing.T) {
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
-			t.Errorf("expected to receive error")
+			t.Errorf("expected get client identity to return error")
 		}
 
 		if cn != "" {
@@ -182,113 +192,60 @@ func TestGetClientIdentity(t *testing.T) {
 		}
 
 		if ou != "" {
-			t.Errorf("expected OU to be empty: got '%s'", cn)
+			t.Errorf("expected OU to be empty: got '%s'", ou)
 		}
 	})
-
 }
 
 func TestAuthorise(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test operator can run job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "alice",
-				OrganizationalUnit: []string{"operator"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "alice", "operator")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
-		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+		if err := auth.Authorise(ctx, api.JobService_RunJob_FullMethodName); err != nil {
+			t.Errorf("expected authorise not to return error: got '%v'", err)
 		}
 	})
 
 	t.Run("Test viewer cannot run job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "bob",
-				OrganizationalUnit: []string{"viewer"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "bob", "viewer")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
-		if err := auth.Authorise(ctx, "/job.v1.JobService/RunJob"); err == nil {
-			t.Errorf("expected to receive error")
+		if err := auth.Authorise(ctx, api.JobService_RunJob_FullMethodName); err == nil {
+			t.Errorf("expected authorise to return error")
 		}
 
 	})
 
 	t.Run("Test viewer can query job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "bob",
-				OrganizationalUnit: []string{"viewer"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "bob", "viewer")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
-		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+		if err := auth.Authorise(ctx, api.JobService_QueryJob_FullMethodName); err != nil {
+			t.Errorf("expected query job not to return error: got '%v'", err)
 		}
 	})
 
 	t.Run("Test unknown role", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "charlie",
-				OrganizationalUnit: []string{"admin"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "charlie", "admin")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
-		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
-			t.Errorf("expected to receive error")
+		if err := auth.Authorise(ctx, api.JobService_QueryJob_FullMethodName); err == nil {
+			t.Errorf("expected query job to return error")
 		}
 	})
 
 	t.Run("Test invalid context", func(t *testing.T) {
 		ctx := t.Context()
 
-		if err := auth.Authorise(ctx, "/job.v1.JobService/QueryJob"); err == nil {
-			t.Errorf("expected to receive error")
+		if err := auth.Authorise(ctx, api.JobService_QueryJob_FullMethodName); err == nil {
+			t.Errorf("expected authorise to return error")
 		}
 	})
 }

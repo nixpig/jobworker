@@ -82,16 +82,16 @@ func TestCgroups(t *testing.T) {
 
 		limits := &cgroups.ResourceLimits{
 			CPUMaxPercent:  50,
-			MemoryMaxBytes: 536870912,
-			IOMaxBPS:       10485760,
+			MemoryMaxBytes: 512 * 1024 * 1024, // 512 MB
+			IOMaxBPS:       10 * 1024 * 1024,  // 10 MB/s
 		}
 
-		cgroup, err := cgroups.CreateCgroup(
-			testCgroupName,
-			limits,
-		)
+		cgroup, err := cgroups.CreateCgroup(testCgroupName, limits)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf(
+				"expected create cgroup not to return error: got '%v'",
+				err,
+			)
 		}
 
 		if cgroup.Path() != testCgroupPath {
@@ -108,14 +108,14 @@ func TestCgroups(t *testing.T) {
 
 		cpuLimit, err := os.ReadFile(filepath.Join(cgroup.Path(), "cpu.max"))
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected read cpu.max not to return error: got '%v'", err)
 		}
 
 		gotCPULimit := string(bytes.TrimSpace(cpuLimit))
 		wantCPULimit := "50000 100000"
 		if gotCPULimit != wantCPULimit {
 			t.Errorf(
-				"expected cpu.max: got '%s', want '%s'",
+				"expected cpu.max data: got '%s', want '%s'",
 				gotCPULimit,
 				wantCPULimit,
 			)
@@ -125,14 +125,17 @@ func TestCgroups(t *testing.T) {
 			filepath.Join(cgroup.Path(), "memory.max"),
 		)
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf(
+				"expected read memory.max not to return error: got '%v'",
+				err,
+			)
 		}
 
 		gotMemoryLimit := string(bytes.TrimSpace(memoryLimit))
 		wantMemoryLimit := "536870912"
 		if gotMemoryLimit != wantMemoryLimit {
 			t.Errorf(
-				"expected memory.max: got '%s', want '%s'",
+				"expected memory.max data: got '%s', want '%s'",
 				gotMemoryLimit,
 				wantMemoryLimit,
 			)
@@ -142,25 +145,27 @@ func TestCgroups(t *testing.T) {
 			filepath.Join(cgroup.Path(), "io.max"),
 		)
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected read io.max not to return error: got '%v'", err)
 		}
 
 		gotIOLimit := string(bytes.TrimSpace(ioLimit))
 		wantIOLimit := "rbps=10485760 wbps=10485760"
 		if !strings.Contains(gotIOLimit, wantIOLimit) {
 			t.Errorf(
-				"expected io.max: got '%s', want '%s'",
-				gotIOLimit, wantIOLimit,
+				"expected io.max data: got '%s', want '%s'",
+				gotIOLimit,
+				wantIOLimit,
 			)
 		}
 
 		fd, err := cgroup.FD()
 		if err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected cgroup FD not to return error: got '%v'", err)
 		}
 		defer fd.Close()
 
-		sleepDuration := 5 * time.Second
+		// Used as a 'timeout', we don't actually sleep/block for 10s in the test.
+		sleepDuration := 10 * time.Second
 
 		cmd := exec.Command("sleep", strconv.Itoa(int(sleepDuration)))
 		cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -171,13 +176,13 @@ func TestCgroups(t *testing.T) {
 		startTime := time.Now()
 
 		if err := cmd.Start(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected start cmd not to return error: got '%v'", err)
 		}
 
 		var wg sync.WaitGroup
 
 		if err := cgroup.Kill(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf("expected cgroup kill not to return error: got '%v'", err)
 		}
 
 		wg.Wait()
@@ -190,7 +195,10 @@ func TestCgroups(t *testing.T) {
 		}
 
 		if _, err := os.Stat(cgroup.Path()); !os.IsNotExist(err) {
-			t.Errorf("expected cgroup path to be removed: got '%v'", err)
+			t.Errorf(
+				"expected cgroup path removal not to return error: got '%v'",
+				err,
+			)
 		}
 	})
 }

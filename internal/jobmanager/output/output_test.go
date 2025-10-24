@@ -81,14 +81,13 @@ func TestOutputStreamer(t *testing.T) {
 						defer sub.Close()
 
 						got, err := io.ReadAll(sub)
-
 						if err != nil {
-							errCh <- fmt.Errorf("expected not to receive error: got '%v'", err)
+							errCh <- fmt.Errorf("expected read all not to return error: got '%v'", err)
 						}
 
 						if string(got) != string(config.payload) {
 							errCh <- fmt.Errorf(
-								"expected data to match: got '%s', want '%s'",
+								"expected stream data to match: got '%s', want '%s'",
 								string(got),
 								config.payload,
 							)
@@ -140,14 +139,13 @@ func TestOutputStreamer(t *testing.T) {
 				defer sub.Close()
 
 				got, err := io.ReadAll(sub)
-
 				if err != nil {
-					errCh <- fmt.Errorf("expected not to receive error: got '%v'", err)
+					errCh <- fmt.Errorf("expected read all not to return error: got '%v'", err)
 				}
 
 				if string(got) != wantData {
 					errCh <- fmt.Errorf(
-						"expected data to match: got '%s', want '%s'",
+						"expected stream data to match: got '%s', want '%s'",
 						string(got),
 						wantData,
 					)
@@ -182,7 +180,7 @@ func TestOutputStreamer(t *testing.T) {
 		sub.Close()
 		close(jobCh)
 
-		// Read _after_ closed.
+		// Read after closed.
 		n, err := sub.Read([]byte{})
 
 		if n != 0 {
@@ -209,17 +207,23 @@ func TestOutputStreamer(t *testing.T) {
 		sub := s.Subscribe()
 
 		if err := sub.Close(); err != nil {
-			t.Errorf("expected not to receive error: got '%v'", err)
+			t.Errorf(
+				"expected first close on sub not to return error: got '%v'",
+				err,
+			)
 		}
 
 		if err := sub.Close(); err != io.ErrClosedPipe {
-			t.Errorf("expected error to be ErrClosedPipe: got '%v'", err)
+			t.Errorf(
+				"expected second close on sub to return error: got '%v', want 'io.ErrClosedPipe'",
+				err,
+			)
 		}
 
 		close(jobCh)
 	})
 
-	t.Run("Test concurrent access of single sub", func(t *testing.T) {
+	t.Run("Test concurrent access of single sub (race)", func(t *testing.T) {
 		t.Parallel()
 
 		jobCh := make(chan struct{})
@@ -228,6 +232,7 @@ func TestOutputStreamer(t *testing.T) {
 			io.NopCloser(strings.NewReader("Hello, world!")),
 			jobCh,
 		)
+
 		sub := s.Subscribe()
 		defer sub.Close()
 
@@ -239,10 +244,10 @@ func TestOutputStreamer(t *testing.T) {
 
 		wg.Go(func() {
 			sub.Close()
-			close(jobCh)
 		})
 
 		wg.Wait()
+		close(jobCh)
 	})
 
 	t.Run("Test pipe closes before job completes", func(t *testing.T) {

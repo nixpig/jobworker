@@ -14,9 +14,16 @@ import (
 	"time"
 )
 
+// TODO: Make emptyTimeout and emptyInterval configurable.
 const (
 	cpuPeriodMicros   = 100000
 	procSelfMountinfo = "/proc/self/mountinfo"
+	sysDevBlock       = "/sys/dev/block"
+
+	// emptyTimeout is the timeout for waiting for the cgroup to empty.
+	emptyTimeout = 10 * time.Second
+	// emptyInterval is the interval between checking for the cgroup to be empty.
+	emptyInterval = 50 * time.Millisecond
 )
 
 var (
@@ -46,12 +53,12 @@ type Cgroup struct {
 	mu sync.Mutex
 }
 
-// CreateCgroup creates a new cgroup at with the given name and limits. It
-// returns a Cgroup with a file descriptor for atomic placement using
+// CreateCgroup creates a cgroup with the given name and limits. It returns a
+// Cgroup with a file descriptor for atomic placement using
 // SysProcAttr.CgroupFD.
-func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
-	// TODO: Add validation for things like path traversal. Since this is only
-	// used by the Job package and we know it always passes a UUID (and not
+func CreateCgroup(name string, limits *ResourceLimits) (c *Cgroup, err error) {
+	// TODO: Add validation against things like path traversal. Since this is
+	// only used by the Job package and we know it always passes a UUID (and not
 	// arbitrary strings) just checking for empty string is safe for prototype.
 	if name == "" {
 		return nil, errors.New("name cannot be empty")
@@ -62,12 +69,12 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		return nil, fmt.Errorf("get cgroup root: %w", err)
 	}
 
-	cg = &Cgroup{
+	c = &Cgroup{
 		name: name,
 		path: filepath.Join(root, name),
 	}
 
-	if err := os.Mkdir(cg.path, 0755); err != nil {
+	if err := os.Mkdir(c.path, 0755); err != nil {
 		if os.IsExist(err) {
 			return nil, fmt.Errorf("cgroup already exists: %w", err)
 		}
@@ -79,21 +86,20 @@ func CreateCgroup(name string, limits *ResourceLimits) (cg *Cgroup, err error) {
 		if err != nil {
 			os.RemoveAll(cgroupPath)
 		}
-	}(cg.path)
+	}(c.path)
 
 	if limits != nil {
-		// TODO: Validate the limits provided, e.g. CPUMaxPercent >= 0 and <=100.
-		// Values are currently hard-coded in server.go, so omitting validation for
-		// the prototype.
-
-		if err := cg.applyLimits(limits); err != nil {
+		if err := c.applyLimits(limits); err != nil {
 			return nil, fmt.Errorf("apply cgroup limits: %w", err)
 		}
 	}
 
-	return cg, nil
+	return c, nil
 }
 
+// TODO: Add validation for limits, e.g. CPUMaxPercent >= 0 and <=100.
+// Values are currently hard-coded in server.go, so omitting validation for
+// the prototype.
 func (c *Cgroup) applyLimits(limits *ResourceLimits) error {
 	if limits.CPUMaxPercent > 0 {
 		if err := c.setCPULimit(limits.CPUMaxPercent); err != nil {
@@ -166,11 +172,10 @@ func (c *Cgroup) Kill() error {
 		[]byte("1"),
 		0644,
 	); err != nil && !os.IsNotExist(err) {
-		return err
+		return fmt.Errorf("write cgroup kill: %w", err)
 	}
 
-	// TODO: Make the timeout and interval configurable.
-	if err := c.waitForEmpty(10*time.Second, 50*time.Millisecond); err != nil {
+	if err := c.waitForEmpty(emptyTimeout, emptyInterval); err != nil {
 		return fmt.Errorf("wait for empty cgroup: %w", err)
 	}
 
@@ -181,8 +186,8 @@ func (c *Cgroup) Kill() error {
 	return nil
 }
 
-// FD returns the cgroup file descriptor used for atomic placement using
-// SysProcAttr.CgroupFD.
+// FD opens the cgroup path and returns the file descriptor used for atomic
+// placement using SysProcAttr.CgroupFD.
 func (c *Cgroup) FD() (*os.File, error) {
 	return os.Open(c.path)
 }
@@ -207,7 +212,7 @@ func (c *Cgroup) waitForEmpty(
 	for {
 		populated, err := c.isPopulated()
 		if err != nil {
-			return fmt.Errorf("check if populated: %w", err)
+			return fmt.Errorf("check if cgroup populated: %w", err)
 		}
 
 		if !populated {
@@ -215,7 +220,11 @@ func (c *Cgroup) waitForEmpty(
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for empty cgroup: %s", c.path)
+			return fmt.Errorf(
+				"timed out after %s waiting for empty cgroup: %s",
+				timeout,
+				c.path,
+			)
 		}
 
 		time.Sleep(interval)
@@ -245,7 +254,7 @@ func (c *Cgroup) isPopulated() (bool, error) {
 }
 
 // detectRootDevice detects the root device and caches the result. Subsequent
-// calls return the cached root device.
+// calls return the cached result.
 func detectRootDevice() (_ string, err error) {
 	initDetectRootDevice.Do(func() {
 		var deviceID string
@@ -254,13 +263,14 @@ func detectRootDevice() (_ string, err error) {
 			return
 		}
 
-		partitionPath := filepath.Join("/sys/dev/block", deviceID, "partition")
+		partitionPath := filepath.Join(sysDevBlock, deviceID, "partition")
 
 		if _, err = os.Stat(partitionPath); err == nil {
 			// Using fmt.Sprintf rather than filepath.Join() so that resolution
 			// of `..` is handled by kernel instead of Go.
 			parentDevicePath := fmt.Sprintf(
-				"/sys/dev/block/%s/../dev",
+				"%s/%s/../dev",
+				sysDevBlock,
 				deviceID,
 			)
 
@@ -283,8 +293,8 @@ func detectRootDevice() (_ string, err error) {
 	return rootDeviceID, err
 }
 
-// getRootDeviceID returns device ID in 'major:minor' format for the root
-// filesystem.
+// getRootDeviceID returns the device ID of the root filesystem in
+// 'major:minor' format.
 func getRootDeviceID() (string, error) {
 	mountinfo, err := os.ReadFile(procSelfMountinfo)
 	if err != nil {
@@ -310,7 +320,7 @@ func getRootDeviceID() (string, error) {
 
 // getCgroupRoot determines the root cgroup for cgroups v2 by finding the first
 // cgroup2 entry in /proc/self/mountinfo and caches the result. Subsequent
-// calls return the cached cgroup root.
+// calls return the cached result.
 func getCgroupRoot() (_ string, err error) {
 	initGetCgroupRoot.Do(func() {
 		var mountinfo []byte

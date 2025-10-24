@@ -45,10 +45,6 @@ proto-clean:
 build-cli:
 	go build -o ./tmp/bin/jobctl -v ./cmd/jobctl
 
-.PHONY: run-cli
-run-cli: build-cli
-	./tmp/bin/jobctl
-
 .PHONY: build-server
 build-server:
 	go build -o ./tmp/bin/jobserver -v ./cmd/jobserver

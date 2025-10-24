@@ -39,13 +39,13 @@ func (r *reader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// Close is used by a client to marks the reader as closed and notifies any
+// Close is used by a client to mark the reader as closed and notifies any
 // waiting reads that they can stop waiting.
 //
 // NOTE: This broadcasts to all readers on the Streamer which will cause other
 // blocked readers to spuriously wake up. The overhead is minimal, and
 // alternatives would add the complexity of tracking all individual readers in
-// the Streamer, for little benefit.
+// the Streamer.
 func (r *reader) Close() error {
 	if r.closed.Swap(true) {
 		return io.ErrClosedPipe
@@ -59,8 +59,8 @@ func (r *reader) Close() error {
 	return nil
 }
 
+// isFinished returns true if the reader is closed or the Streamer is done and
+// we've read all the data from it.
 func (r *reader) isFinished() bool {
-	// We're finished if the reader is closed or the Streamer is done and we've
-	// read all the data.
 	return r.closed.Load() || (r.s.isDone() && r.position >= len(r.s.buffer))
 }

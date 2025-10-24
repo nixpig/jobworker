@@ -18,6 +18,12 @@ const (
 	// readBufferSize is the temporary buffer size for reading from source pipe.
 	// 4KB aligns with typical pipe buffer sizes.
 	readBufferSize = 4096
+
+	// readDeadline is the deadline applied to a source io.ReadCloser whose
+	// lifetime exceeds the lifetime of a Job before force-closing it.
+	// 100ms should be enough time for the kernel to close the FD and drain any
+	// remaining data from pipe buffer with plenty of time to spare.
+	readDeadline = 100 * time.Millisecond
 )
 
 // Streamer is responsible for processing job output by reading from a
@@ -109,7 +115,9 @@ func (s *Streamer) processOutput(source io.ReadCloser) {
 		if rd, ok := source.(interface {
 			SetReadDeadline(time.Time) error
 		}); ok {
-			if err := rd.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+			if err := rd.SetReadDeadline(
+				time.Now().Add(readDeadline),
+			); err != nil {
 				source.Close()
 			}
 		} else {

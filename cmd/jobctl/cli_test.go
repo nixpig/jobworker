@@ -8,7 +8,6 @@ import (
 )
 
 func TestCliHelpers(t *testing.T) {
-
 	t.Parallel()
 
 	t.Run("Test all job states are mapped", func(t *testing.T) {
