@@ -82,16 +82,16 @@ func TestCgroups(t *testing.T) {
 
 		limits := &cgroups.ResourceLimits{
 			CPUMaxPercent:  50,
-			MemoryMaxBytes: 536870912,
-			IOMaxBPS:       10485760,
+			MemoryMaxBytes: 512 * 1024 * 1024, // 512 MB
+			IOMaxBPS:       10 * 1024 * 1024,  // 10 MB/s
 		}
 
-		cgroup, err := cgroups.CreateCgroup(
-			testCgroupName,
-			limits,
-		)
+		cgroup, err := cgroups.CreateCgroup(testCgroupName, limits)
 		if err != nil {
-			t.Fatalf("expected not to receive error: got '%v'", err)
+			t.Fatalf(
+				"expected create cgroup not to return error: got '%v'",
+				err,
+			)
 		}
 
 		if cgroup.Path() != testCgroupPath {
@@ -164,6 +164,7 @@ func TestCgroups(t *testing.T) {
 		}
 		defer fd.Close()
 
+		// Used as a 'timeout', we don't actually sleep/block for 10s in the test.
 		sleepDuration := 10 * time.Second
 
 		cmd := exec.Command("sleep", strconv.Itoa(int(sleepDuration)))

@@ -13,6 +13,23 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+func createAuthInfo(t *testing.T, cn, ou string) credentials.TLSInfo {
+	t.Helper()
+
+	cert := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName:         cn,
+			OrganizationalUnit: []string{ou},
+		},
+	}
+
+	return credentials.TLSInfo{
+		State: tls.ConnectionState{
+			VerifiedChains: [][]*x509.Certificate{{cert}},
+		},
+	}
+}
+
 func TestIsAuthorised(t *testing.T) {
 	t.Parallel()
 
@@ -120,37 +137,26 @@ func TestGetClientIdentity(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test peer with valid TLS info", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "alice",
-				OrganizationalUnit: []string{"operator"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "alice", "operator")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err != nil {
 			t.Errorf(
-				"expected get client identity not get to return error: got '%v'",
+				"expected get client identity not to return error: got '%v'",
 				err,
 			)
 		}
 
-		if cn != "alice" {
-			t.Errorf("expected CN: got '%s', want 'alice'", cn)
+		wantCN := "alice"
+		if cn != wantCN {
+			t.Errorf("expected CN: got '%s', want '%s'", cn, wantCN)
 		}
 
-		if ou != "operator" {
-			t.Errorf("expected OU: got '%s', want 'operator'", cn)
+		wantOU := "operator"
+		if ou != wantOU {
+			t.Errorf("expected OU: got '%s', want '%s'", ou, wantOU)
 		}
 	})
 
@@ -178,7 +184,7 @@ func TestGetClientIdentity(t *testing.T) {
 
 		cn, ou, err := auth.GetClientIdentity(ctx)
 		if err == nil {
-			t.Errorf("expected to get client identity to return error")
+			t.Errorf("expected get client identity to return error")
 		}
 
 		if cn != "" {
@@ -186,7 +192,7 @@ func TestGetClientIdentity(t *testing.T) {
 		}
 
 		if ou != "" {
-			t.Errorf("expected OU to be empty: got '%s'", cn)
+			t.Errorf("expected OU to be empty: got '%s'", ou)
 		}
 	})
 }
@@ -195,20 +201,7 @@ func TestAuthorise(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test operator can run job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "alice",
-				OrganizationalUnit: []string{"operator"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "alice", "operator")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
@@ -218,20 +211,7 @@ func TestAuthorise(t *testing.T) {
 	})
 
 	t.Run("Test viewer cannot run job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "bob",
-				OrganizationalUnit: []string{"viewer"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "bob", "viewer")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
@@ -242,20 +222,7 @@ func TestAuthorise(t *testing.T) {
 	})
 
 	t.Run("Test viewer can query job", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "bob",
-				OrganizationalUnit: []string{"viewer"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "bob", "viewer")}
 
 		ctx := peer.NewContext(t.Context(), p)
 
@@ -265,20 +232,7 @@ func TestAuthorise(t *testing.T) {
 	})
 
 	t.Run("Test unknown role", func(t *testing.T) {
-		cert := &x509.Certificate{
-			Subject: pkix.Name{
-				CommonName:         "charlie",
-				OrganizationalUnit: []string{"admin"},
-			},
-		}
-
-		authInfo := credentials.TLSInfo{
-			State: tls.ConnectionState{
-				VerifiedChains: [][]*x509.Certificate{{cert}},
-			},
-		}
-
-		p := &peer.Peer{AuthInfo: authInfo}
+		p := &peer.Peer{AuthInfo: createAuthInfo(t, "charlie", "admin")}
 
 		ctx := peer.NewContext(t.Context(), p)
 

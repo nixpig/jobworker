@@ -14,9 +14,16 @@ import (
 	"time"
 )
 
+// TODO: Make emptyTimeout and emptyInterval configurable.
 const (
 	cpuPeriodMicros   = 100000
 	procSelfMountinfo = "/proc/self/mountinfo"
+	sysDevBlock       = "/sys/dev/block"
+
+	// emptyTimeout is the timeout for waiting for the cgroup to empty.
+	emptyTimeout = 10 * time.Second
+	// emptyInterval is the interval between checking for the cgroup to be empty.
+	emptyInterval = 50 * time.Millisecond
 )
 
 var (
@@ -82,10 +89,6 @@ func CreateCgroup(name string, limits *ResourceLimits) (c *Cgroup, err error) {
 	}(c.path)
 
 	if limits != nil {
-		// TODO: Add validation for limits, e.g. CPUMaxPercent >= 0 and <=100.
-		// Values are currently hard-coded in server.go, so omitting validation for
-		// the prototype.
-
 		if err := c.applyLimits(limits); err != nil {
 			return nil, fmt.Errorf("apply cgroup limits: %w", err)
 		}
@@ -94,6 +97,9 @@ func CreateCgroup(name string, limits *ResourceLimits) (c *Cgroup, err error) {
 	return c, nil
 }
 
+// TODO: Add validation for limits, e.g. CPUMaxPercent >= 0 and <=100.
+// Values are currently hard-coded in server.go, so omitting validation for
+// the prototype.
 func (c *Cgroup) applyLimits(limits *ResourceLimits) error {
 	if limits.CPUMaxPercent > 0 {
 		if err := c.setCPULimit(limits.CPUMaxPercent); err != nil {
@@ -166,11 +172,10 @@ func (c *Cgroup) Kill() error {
 		[]byte("1"),
 		0644,
 	); err != nil && !os.IsNotExist(err) {
-		return err
+		return fmt.Errorf("write cgroup kill: %w", err)
 	}
 
-	// TODO: Make the timeout and interval configurable.
-	if err := c.waitForEmpty(10*time.Second, 50*time.Millisecond); err != nil {
+	if err := c.waitForEmpty(emptyTimeout, emptyInterval); err != nil {
 		return fmt.Errorf("wait for empty cgroup: %w", err)
 	}
 
@@ -181,8 +186,8 @@ func (c *Cgroup) Kill() error {
 	return nil
 }
 
-// FD returns the cgroup file descriptor used for atomic placement using
-// SysProcAttr.CgroupFD.
+// FD opens the cgroup path and returns the file descriptor used for atomic
+// placement using SysProcAttr.CgroupFD.
 func (c *Cgroup) FD() (*os.File, error) {
 	return os.Open(c.path)
 }
@@ -215,7 +220,11 @@ func (c *Cgroup) waitForEmpty(
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for empty cgroup: %s", c.path)
+			return fmt.Errorf(
+				"timed out after %s waiting for empty cgroup: %s",
+				timeout,
+				c.path,
+			)
 		}
 
 		time.Sleep(interval)
@@ -254,13 +263,14 @@ func detectRootDevice() (_ string, err error) {
 			return
 		}
 
-		partitionPath := filepath.Join("/sys/dev/block", deviceID, "partition")
+		partitionPath := filepath.Join(sysDevBlock, deviceID, "partition")
 
 		if _, err = os.Stat(partitionPath); err == nil {
 			// Using fmt.Sprintf rather than filepath.Join() so that resolution
 			// of `..` is handled by kernel instead of Go.
 			parentDevicePath := fmt.Sprintf(
-				"/sys/dev/block/%s/../dev",
+				"%s/%s/../dev",
+				sysDevBlock,
 				deviceID,
 			)
 

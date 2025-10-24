@@ -32,7 +32,7 @@ type Job struct {
 }
 
 // JobStatus represents the status of a Job, including its state, exit code,
-// and whether its execution was interrupted.
+// the signal it received, and whether or not its execution was interrupted.
 type JobStatus struct {
 	State       JobState
 	ExitCode    int
@@ -91,8 +91,10 @@ func (j *Job) Start() (err error) {
 			j.pipeWriter.Close()
 
 			if j.cgroup != nil {
-				// TODO: If observability implemented, capture these errors.
-				j.cgroup.Kill()
+				if err := j.cgroup.Kill(); err != nil {
+					// TODO: When observability implemented, capture these errors.
+					_ = err
+				}
 			}
 
 			close(j.done)
@@ -127,11 +129,13 @@ func (j *Job) Start() (err error) {
 	go func() {
 		j.cmd.Wait()
 
-		// TODO: Capture errors from these 'best effort' attempts when observability
-		// implemented.
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
-		j.cgroup.Kill()
+
+		if err := j.cgroup.Kill(); err != nil {
+			// TODO: When observability implemented, capture these errors.
+			_ = err
+		}
 
 		close(j.done)
 	}()
@@ -139,8 +143,9 @@ func (j *Job) Start() (err error) {
 	return nil
 }
 
-// Stop stops the Job. Trying to stop a Job that is not in JobStateStarted
-// returns an InvalidStateError.
+// Stop stops the Job, marks it as interrupted, and kills the cgroup, sending
+// a SIGKILL to all processes. Trying to stop a Job that is not in
+// JobStateStarted returns an InvalidStateError.
 func (j *Job) Stop() error {
 	if !j.state.CompareAndSwap(JobStateStarted, JobStateStopping) {
 		return NewInvalidStateError(j.state.Load(), JobStateStopping)

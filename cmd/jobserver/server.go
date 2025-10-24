@@ -26,18 +26,30 @@ const (
 	// streamBufferSize is the buffer size for reading job output.
 	// 4KB aligns with typical pipe buffer sizes.
 	streamBufferSize = 4096
+
+	// TODO: Make shutdownTimeout configurable via server config.
+	shutdownTimeout = 10 * time.Second
 )
 
 var (
-	validationErrorID = status.Error(
+	errIDRequired = status.Error(
 		codes.InvalidArgument,
 		"ID is required",
 	)
-	validationErrorProgram = status.Error(
+	errProgramRequired = status.Error(
 		codes.InvalidArgument,
 		"Program is required",
 	)
-	notAuthorisedError = status.Error(codes.PermissionDenied, "Not authorised")
+	errNotAuthorised = status.Error(codes.PermissionDenied, "Not authorised")
+)
+
+var (
+	// TODO: Make resource limits configurable via server config.
+	defaultResourceLimits = &cgroups.ResourceLimits{
+		CPUMaxPercent:  50,
+		MemoryMaxBytes: 512 * 1024 * 1024, // 512 MB
+		IOMaxBPS:       10 * 1024 * 1024,  // 10 MB/s
+	}
 )
 
 type server struct {
@@ -110,8 +122,7 @@ func (s *server) shutdown() {
 
 	select {
 	case <-doneCh:
-	// TODO: Make shutdown timeout configurable via server config.
-	case <-time.After(10 * time.Second):
+	case <-time.After(shutdownTimeout):
 		s.logger.Warn("graceful shutdown timed out, forcing stop")
 		grpcServer.Stop()
 	}
@@ -124,21 +135,18 @@ func (s *server) RunJob(
 	req *api.RunJobRequest,
 ) (*api.RunJobResponse, error) {
 	if req.Program == "" {
-		return nil, validationErrorProgram
+		return nil, errProgramRequired
 	}
 
-	id, err := s.manager.RunJob(
-		req.Program,
-		req.Args,
-		// TODO: Make resource limits configurable via server config.
-		&cgroups.ResourceLimits{
-			CPUMaxPercent:  50,
-			MemoryMaxBytes: 536870912,
-			IOMaxBPS:       10485760,
-		},
-	)
+	id, err := s.manager.RunJob(req.Program, req.Args, defaultResourceLimits)
 	if err != nil {
-		return nil, s.mapError("run job", err)
+		s.logger.Error(
+			"failed to run job",
+			"program", req.Program,
+			"args", req.Args,
+			"err", err,
+		)
+		return nil, s.mapError(err)
 	}
 
 	return &api.RunJobResponse{Id: id}, nil
@@ -149,11 +157,16 @@ func (s *server) StopJob(
 	req *api.StopJobRequest,
 ) (*api.StopJobResponse, error) {
 	if req.Id == "" {
-		return nil, validationErrorID
+		return nil, errIDRequired
 	}
 
 	if err := s.manager.StopJob(req.Id); err != nil {
-		return nil, s.mapError("stop job", err)
+		s.logger.Error(
+			"failed to stop job",
+			"id", req.Id,
+			"err", err,
+		)
+		return nil, s.mapError(err)
 	}
 
 	return &api.StopJobResponse{}, nil
@@ -164,15 +177,20 @@ func (s *server) QueryJob(
 	req *api.QueryJobRequest,
 ) (*api.QueryJobResponse, error) {
 	if req.Id == "" {
-		return nil, validationErrorID
+		return nil, errIDRequired
 	}
 
 	jobStatus, err := s.manager.QueryJob(req.Id)
 	if err != nil {
-		return nil, s.mapError("query job", err)
+		s.logger.Error(
+			"failed to query job",
+			"id", req.Id,
+			"err", err,
+		)
+		return nil, s.mapError(err)
 	}
 
-	signal := ""
+	var signal string
 	if jobStatus.Signal != nil {
 		signal = jobStatus.Signal.String()
 	}
@@ -190,12 +208,17 @@ func (s *server) StreamJobOutput(
 	stream api.JobService_StreamJobOutputServer,
 ) error {
 	if req.Id == "" {
-		return validationErrorID
+		return errIDRequired
 	}
 
 	outputReader, err := s.manager.StreamJobOutput(req.Id)
 	if err != nil {
-		return s.mapError("output stream", err)
+		s.logger.Error(
+			"failed to stream job output",
+			"id", req.Id,
+			"err", err,
+		)
+		return s.mapError(err)
 	}
 
 	defer outputReader.Close()
@@ -227,10 +250,16 @@ func (s *server) StreamJobOutput(
 		}
 		if err != nil {
 			if err == io.EOF {
+				s.logger.Debug("stream EOF", "id", req.Id)
 				break
 			}
 
-			return s.mapError("read job output stream", err)
+			s.logger.Error(
+				"unknown job streaming error",
+				"id", req.Id,
+				"err", err,
+			)
+			return s.mapError(err)
 		}
 	}
 
@@ -238,18 +267,15 @@ func (s *server) StreamJobOutput(
 }
 
 // mapError translates jobmanager errors to gRPC errors.
-func (s *server) mapError(logMsg string, err error) error {
+func (s *server) mapError(err error) error {
 	switch {
 	case errors.Is(err, jobmanager.ErrJobNotFound):
-		s.logger.Warn(logMsg, "err", err)
 		return status.Error(codes.NotFound, err.Error())
 
 	case errors.As(err, new(jobmanager.InvalidStateError)):
-		s.logger.Warn(logMsg, "err", err)
 		return status.Error(codes.FailedPrecondition, err.Error())
 
 	default:
-		s.logger.Error(logMsg, "err", err)
 		return status.Error(codes.Internal, "Internal server error")
 	}
 }
@@ -264,7 +290,7 @@ func authUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	) (any, error) {
 		if err := auth.Authorise(ctx, info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
-			return nil, notAuthorisedError
+			return nil, errNotAuthorised
 		}
 
 		return handler(ctx, req)
@@ -281,7 +307,7 @@ func authStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
 	) error {
 		if err := auth.Authorise(ss.Context(), info.FullMethod); err != nil {
 			logger.Warn("failed to authorise client", "err", err)
-			return notAuthorisedError
+			return errNotAuthorised
 		}
 
 		return handler(srv, ss)

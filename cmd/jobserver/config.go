@@ -13,6 +13,7 @@ import (
 )
 
 type config struct {
+	host       string
 	port       string
 	debug      bool
 	certPath   string
@@ -60,6 +61,7 @@ func (c *config) validate() error {
 func parseFlags() *config {
 	cfg := &config{}
 
+	pflag.StringVar(&cfg.host, "host", "localhost", "gRPC server host to bind")
 	pflag.StringVar(&cfg.port, "port", "8443", "gRPC server port")
 	pflag.BoolVar(&cfg.debug, "debug", false, "Enable debug logs")
 

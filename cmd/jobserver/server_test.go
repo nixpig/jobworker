@@ -212,14 +212,13 @@ func waitForJobState(
 ) *api.QueryJobResponse {
 	t.Helper()
 
-	ctx := t.Context()
 	deadline := time.Now().Add(timeout)
 
 	var resp *api.QueryJobResponse
 	var err error
 
 	for time.Now().Before(deadline) {
-		resp, err = client.QueryJob(ctx, &api.QueryJobRequest{Id: id})
+		resp, err = client.QueryJob(t.Context(), &api.QueryJobRequest{Id: id})
 		if err != nil {
 			continue
 		}
@@ -242,15 +241,13 @@ func waitForJobState(
 func TestJobServerIntegrationAsOperator(t *testing.T) {
 	operatorClient, _ := setupTestServerAndClients(t)
 
-	ctx := t.Context()
-
 	t.Run("Test job lifecycle", func(t *testing.T) {
 		runReq := &api.RunJobRequest{
 			Program: "sleep",
 			Args:    []string{"30"},
 		}
 
-		runResp, err := operatorClient.RunJob(ctx, runReq)
+		runResp, err := operatorClient.RunJob(t.Context(), runReq)
 		if err != nil {
 			t.Fatalf("expected run job not to return error: got '%v'", err)
 		}
@@ -263,7 +260,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		queryResp, err := operatorClient.QueryJob(ctx, queryReq)
+		queryResp, err := operatorClient.QueryJob(t.Context(), queryReq)
 		if err != nil {
 			t.Errorf("expected query job not to return error: got '%v'", err)
 		}
@@ -279,13 +276,13 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		_, err = operatorClient.StopJob(ctx, stopReq)
+		_, err = operatorClient.StopJob(t.Context(), stopReq)
 		if err != nil {
 			t.Errorf("expected stop job not to return error: got '%v'", err)
 		}
 
 		// Try stopping an already stopped job
-		_, err = operatorClient.StopJob(ctx, stopReq)
+		_, err = operatorClient.StopJob(t.Context(), stopReq)
 		testGRPCStatus(t, err, codes.FailedPrecondition)
 
 		jobStatus := waitForJobState(
@@ -311,7 +308,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Args:    []string{"Hello, world!"},
 		}
 
-		runResp, err := operatorClient.RunJob(ctx, runReq)
+		runResp, err := operatorClient.RunJob(t.Context(), runReq)
 		if err != nil {
 			t.Fatalf("expected run job not to return error: got '%v'", err)
 		}
@@ -322,7 +319,10 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		// Stream from same job multiple times
 		for i := range 3 {
-			stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
+			stream, err := operatorClient.StreamJobOutput(
+				t.Context(),
+				streamReq,
+			)
 			if err != nil {
 				t.Errorf(
 					"expected stream job not to return error: got '%v'",
@@ -339,7 +339,8 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 				}
 				if err != nil {
 					t.Errorf(
-						"stream recieve not to return error: got '%v'",
+						"expected stream '%d' not to recieve error: got '%v'",
+						i,
 						err,
 					)
 				}
@@ -380,7 +381,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Args:    []string{"-c", "cat /proc/self/cgroup"},
 		}
 
-		runResp, err := operatorClient.RunJob(ctx, runReq)
+		runResp, err := operatorClient.RunJob(t.Context(), runReq)
 		if err != nil {
 			t.Fatalf("expected run job not to return error: got '%v'", err)
 		}
@@ -389,7 +390,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Id: runResp.Id,
 		}
 
-		stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
+		stream, err := operatorClient.StreamJobOutput(t.Context(), streamReq)
 		if err != nil {
 			t.Errorf("expected stream job not to return error: got '%v'", err)
 		}
@@ -504,7 +505,8 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 				}
 				if err != nil {
 					t.Errorf(
-						"stream expected not to receive error: got '%v'",
+						"expected stream '%d' not to receive error: got '%v'",
+						i,
 						err,
 					)
 				}

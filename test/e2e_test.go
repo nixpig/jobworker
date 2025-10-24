@@ -148,7 +148,8 @@ func (env *testEnv) runCLI(
 
 // TODO: For a production solution, we might consider a more comprehensive E2E
 // test suite. For this prototype, a quick smoke test to verify CLI is able to
-// communicate with the server and the available commands run should suffice.
+// communicate with the server and the available commands run without error
+// should suffice.
 func TestBasicE2E(t *testing.T) {
 	env := setupTestEnv(t)
 

@@ -1,7 +1,9 @@
 package jobmanager_test
 
 import (
+	"errors"
 	"io"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -157,58 +159,95 @@ func TestJobManager(t *testing.T) {
 
 		m := jobmanager.NewManager()
 
-		if _, err := m.QueryJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
+		if _, err := m.QueryJob("non-existent-job-id"); !errors.Is(
+			err,
+			jobmanager.ErrJobNotFound,
+		) {
 			t.Errorf(
 				"expected query job to return ErrJobNotFound: got '%v'",
 				err,
 			)
 		}
 
-		if err := m.StopJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
+		if err := m.StopJob("non-existent-job-id"); !errors.Is(
+			err,
+			jobmanager.ErrJobNotFound,
+		) {
 			t.Errorf(
 				"expected stop job to return ErrJobNotFound: got '%v'",
 				err,
 			)
 		}
 
-		if _, err := m.StreamJobOutput("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
+		if _, err := m.StreamJobOutput("non-existent-job-id"); !errors.Is(
+			err,
+			jobmanager.ErrJobNotFound,
+		) {
 			t.Errorf(
 				"expected stream job output to return ErrJobNotFound: got '%v'",
 				err,
 			)
 		}
 
-		if _, err := m.GetJob("non-existent-job-id"); err != jobmanager.ErrJobNotFound {
+		if _, err := m.GetJob("non-existent-job-id"); !errors.Is(
+			err,
+			jobmanager.ErrJobNotFound,
+		) {
 			t.Errorf("expected get job to return ErrJobNotFound: got '%v'", err)
 		}
 	})
 
-	t.Run("Test multiple jobs", func(t *testing.T) {
+	t.Run("Test multiple jobs (concurrently)", func(t *testing.T) {
 		t.Parallel()
 
 		m := jobmanager.NewManager()
 
+		var wg sync.WaitGroup
+
 		ids := make([]string, 3)
 		for i := range len(ids) {
-			ids[i] = runTestJobInManager(t, m, "sleep", []string{"5"})
+			wg.Go(func() {
+				ids[i] = runTestJobInManager(t, m, "sleep", []string{"5"})
+			})
 		}
+
+		wg.Wait()
 
 		for _, id := range ids {
-			status, err := m.QueryJob(id)
-			if err != nil {
-				t.Errorf(
-					"expected query job not to return error: got '%v'",
-					err,
-				)
-			}
-
-			if status.State != jobmanager.JobStateStarted {
-				t.Errorf(
-					"expected job state: got '%s', want '%s'",
-					status.State,
-					jobmanager.JobStateStarted,
-				)
-			}
+			wg.Go(func() {
+				err := m.StopJob(id)
+				if err != nil {
+					t.Errorf(
+						"expected stop job '%s' not to return error: got '%v'",
+						id,
+						err,
+					)
+				}
+			})
 		}
+
+		wg.Wait()
+
+		for _, id := range ids {
+			wg.Go(func() {
+				status, err := m.QueryJob(id)
+				if err != nil {
+					t.Errorf(
+						"expected query job '%s' not to return error: got '%v'",
+						id,
+						err,
+					)
+				}
+
+				testJobState(t, status, &jobmanager.JobStatus{
+					ExitCode:    -1,
+					State:       jobmanager.JobStateStopped,
+					Interrupted: true,
+					Signal:      syscall.SIGKILL,
+				})
+			})
+		}
+
+		wg.Wait()
 	})
 }

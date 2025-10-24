@@ -207,12 +207,15 @@ func TestOutputStreamer(t *testing.T) {
 		sub := s.Subscribe()
 
 		if err := sub.Close(); err != nil {
-			t.Errorf("expected close sub not to return error: got '%v'", err)
+			t.Errorf(
+				"expected first close on sub not to return error: got '%v'",
+				err,
+			)
 		}
 
 		if err := sub.Close(); err != io.ErrClosedPipe {
 			t.Errorf(
-				"expected sub close error to be ErrClosedPipe: got '%v'",
+				"expected second close on sub to return error: got '%v', want 'io.ErrClosedPipe'",
 				err,
 			)
 		}
@@ -241,10 +244,10 @@ func TestOutputStreamer(t *testing.T) {
 
 		wg.Go(func() {
 			sub.Close()
-			close(jobCh)
 		})
 
 		wg.Wait()
+		close(jobCh)
 	})
 
 	t.Run("Test pipe closes before job completes", func(t *testing.T) {

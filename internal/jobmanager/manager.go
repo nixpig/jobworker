@@ -64,7 +64,7 @@ func (m *Manager) RunJob(
 func (m *Manager) StopJob(id string) error {
 	job, err := m.GetJob(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("get job: %w", err)
 	}
 
 	return job.Stop()
@@ -75,7 +75,7 @@ func (m *Manager) StopJob(id string) error {
 func (m *Manager) QueryJob(id string) (*JobStatus, error) {
 	job, err := m.GetJob(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get job: %w", err)
 	}
 
 	return job.Status(), nil
@@ -84,12 +84,12 @@ func (m *Manager) QueryJob(id string) (*JobStatus, error) {
 // StreamJobOutput returns an io.ReadCloser of output from the Job with the
 // given id or ErrJobNotFound if it doesn't exist.
 //
-// Read will return all output since the Job started and block waiting for new
+// Read will read all output since the Job started and block waiting for new
 // output.
 func (m *Manager) StreamJobOutput(id string) (io.ReadCloser, error) {
 	job, err := m.GetJob(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get job: %w", err)
 	}
 
 	return job.StreamOutput(), nil
@@ -114,6 +114,7 @@ func (m *Manager) Shutdown() {
 
 					// TODO: If observability was in scope, we could bubble these errors,
 					// log them, and capture relevent metrics.
+					_ = err
 				}
 			})
 		}

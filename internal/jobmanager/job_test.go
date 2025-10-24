@@ -16,19 +16,14 @@ func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 
 	id := uuid.NewString()
 
-	job, err := jobmanager.NewJob(
-		id,
-		program,
-		args,
-		nil,
-	)
+	job, err := jobmanager.NewJob(id, program, args, nil)
 	if err != nil {
 		t.Fatalf("expected new job not to return error: got '%v'", err)
 	}
 
 	gotID := job.ID()
 	if gotID != id {
-		t.Errorf("expected new job id: got '%s', want '%s'", gotID, id)
+		t.Fatalf("expected new job id: got '%s', want '%s'", gotID, id)
 	}
 
 	return job

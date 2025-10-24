@@ -38,7 +38,7 @@ func run() error {
 
 	server := newServer(manager, logger, cfg)
 
-	listener, err := net.Listen("tcp", net.JoinHostPort("localhost", cfg.port))
+	listener, err := net.Listen("tcp", net.JoinHostPort(cfg.host, cfg.port))
 	if err != nil {
 		logger.Error("failed to create listener", "port", cfg.port, "err", err)
 		return fmt.Errorf("create TCP listener: %w", err)

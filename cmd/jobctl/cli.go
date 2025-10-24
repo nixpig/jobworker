@@ -177,7 +177,7 @@ func (c *cli) statusCmd() *cobra.Command {
 			}
 
 			// TODO: Only output headers if TTY. Or could add a flag like --plain or
-			// --skip-headers to hide headers.
+			// --skip-headers to hide headers, or a --json flag to format as JSON.
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 
 			fmt.Fprintf(w, "STATE\tEXIT CODE\tSIGNAL\tINTERRUPTED\t\n")
@@ -268,7 +268,7 @@ func mapError(err error) error {
 
 	switch st.Code() {
 	case codes.NotFound:
-		return errors.New("not found")
+		return errors.New("job not found")
 	case codes.PermissionDenied:
 		return errors.New("permission denied")
 	case codes.Unauthenticated:
