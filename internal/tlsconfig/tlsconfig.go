@@ -24,6 +24,11 @@ type Config struct {
 // SetupTLS creates a TLS configuration for mTLS authentication.
 // When `config.Server = true`, requires and verifies client certs.
 // When `config.Server = false`, uses CA to verify server cert.
+//
+// Cipher suites (not configurable in Go):
+//   - TLS_AES_128_GCM_SHA256
+//   - TLS_AES_256_GCM_SHA384
+//   - TLS_CHACHA20_POLY1305_SHA256
 func SetupTLS(config *Config) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
 	if err != nil {

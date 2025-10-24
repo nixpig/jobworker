@@ -3,6 +3,7 @@ package jobmanager_test
 import (
 	"errors"
 	"io"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -15,7 +16,12 @@ func newTestJob(t *testing.T, program string, args []string) *jobmanager.Job {
 
 	id := uuid.NewString()
 
-	job, err := jobmanager.NewJob(id, program, args)
+	job, err := jobmanager.NewJob(
+		id,
+		program,
+		args,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("expected not to receive error: got '%v'", err)
 	}
@@ -89,6 +95,34 @@ func TestJob(t *testing.T) {
 			State:       jobmanager.JobStateCreated,
 			Interrupted: false,
 		})
+	})
+
+	t.Run("Test job put in cgroup", func(t *testing.T) {
+		t.Parallel()
+
+		job := runTestJob(
+			t,
+			"/bin/bash",
+			[]string{"-c", "cat /proc/self/cgroup"},
+		)
+
+		<-job.Done()
+
+		outputReader := job.StreamOutput()
+		gotOutput, err := io.ReadAll(outputReader)
+		outputReader.Close()
+
+		if err != nil {
+			t.Errorf("expected not to receive error: got '%v'", err)
+		}
+
+		if !strings.Contains(string(gotOutput), job.ID()) {
+			t.Errorf(
+				"expected output: got '%s', want '%s'",
+				gotOutput,
+				job.ID(),
+			)
+		}
 	})
 
 	t.Run("Test run to completion", func(t *testing.T) {

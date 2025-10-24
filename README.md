@@ -2,15 +2,24 @@
 
 [WIP] Prototype jobworker service that provides an API to run arbitrary Linux processes.
 
+## Generate certs
+
+```bash
+make certs
+```
+
 ## `jobserver`
 
 ```bash
-make certs-ca
-make certs-server
+make run-server
 ```
 
+## `jobctl`
+
 ```bash
-make run-server
+make build-cli
+
+./tmp/bin/jobctl help
 ```
 
 ## Development
@@ -19,4 +28,7 @@ make run-server
 
 ```bash
 make test
+
+make test-e2e
 ```
+

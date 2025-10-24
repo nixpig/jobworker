@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
@@ -54,11 +55,19 @@ func TestOutputStreamer(t *testing.T) {
 			t.Run(scenario, func(t *testing.T) {
 				t.Parallel()
 
+				jobCh := make(chan struct{})
+
+				if !config.lateSub {
+					close(jobCh)
+				}
+
 				s := output.NewStreamer(
 					io.NopCloser(bytes.NewReader(config.payload)),
+					jobCh,
 				)
 
 				if config.lateSub {
+					close(jobCh)
 					<-s.Done()
 				}
 
@@ -109,7 +118,9 @@ func TestOutputStreamer(t *testing.T) {
 
 		pr, pw := io.Pipe()
 
-		s := output.NewStreamer(pr)
+		jobCh := make(chan struct{})
+
+		s := output.NewStreamer(pr, jobCh)
 
 		errCh := make(chan error, subs)
 
@@ -146,6 +157,7 @@ func TestOutputStreamer(t *testing.T) {
 
 		writerWg.Wait()
 		pw.Close()
+		close(jobCh)
 		readerWg.Wait()
 
 		close(errCh)
@@ -160,12 +172,15 @@ func TestOutputStreamer(t *testing.T) {
 
 		pr, pw := io.Pipe()
 
-		s := output.NewStreamer(pr)
+		jobCh := make(chan struct{})
+
+		s := output.NewStreamer(pr, jobCh)
 
 		sub := s.Subscribe()
 
 		// Close immediately.
 		sub.Close()
+		close(jobCh)
 
 		// Read _after_ closed.
 		n, err := sub.Read([]byte{})
@@ -184,8 +199,11 @@ func TestOutputStreamer(t *testing.T) {
 	t.Run("Test closing a closed sub", func(t *testing.T) {
 		t.Parallel()
 
+		jobCh := make(chan struct{})
+
 		s := output.NewStreamer(
 			io.NopCloser(strings.NewReader("Hello, world!")),
+			jobCh,
 		)
 
 		sub := s.Subscribe()
@@ -197,13 +215,18 @@ func TestOutputStreamer(t *testing.T) {
 		if err := sub.Close(); err != io.ErrClosedPipe {
 			t.Errorf("expected error to be ErrClosedPipe: got '%v'", err)
 		}
+
+		close(jobCh)
 	})
 
 	t.Run("Test concurrent access of single sub", func(t *testing.T) {
 		t.Parallel()
 
+		jobCh := make(chan struct{})
+
 		s := output.NewStreamer(
 			io.NopCloser(strings.NewReader("Hello, world!")),
+			jobCh,
 		)
 		sub := s.Subscribe()
 		defer sub.Close()
@@ -216,8 +239,108 @@ func TestOutputStreamer(t *testing.T) {
 
 		wg.Go(func() {
 			sub.Close()
+			close(jobCh)
 		})
 
 		wg.Wait()
+	})
+
+	t.Run("Test pipe closes before job completes", func(t *testing.T) {
+		t.Parallel()
+
+		pr, pw := io.Pipe()
+
+		jobCh := make(chan struct{})
+
+		s := output.NewStreamer(pr, jobCh)
+
+		payload := []byte("Hello, world!")
+
+		pw.Write(payload)
+		pw.Close()
+
+		sub := s.Subscribe()
+		defer sub.Close()
+
+		readCh := make(chan []byte)
+		errCh := make(chan error, 1)
+
+		go func() {
+			got, err := io.ReadAll(sub)
+			if err != nil {
+				errCh <- fmt.Errorf("expected read not to return error: got '%v'", err)
+				return
+			}
+
+			readCh <- got
+		}()
+
+		select {
+		case <-readCh:
+			t.Errorf("expected read not to return before job end")
+		case err := <-errCh:
+			t.Errorf("expected read not to return error: got '%v'", err)
+		case <-time.After(50 * time.Millisecond):
+			// Wait until blocked.
+		}
+
+		close(jobCh)
+
+		select {
+		case got := <-readCh:
+			if string(got) != string(payload) {
+				t.Errorf(
+					"expected read data to match: got '%s', want '%s'",
+					string(got),
+					payload,
+				)
+			}
+		case err := <-errCh:
+			t.Errorf("expected read not to return error: '%v'", err)
+		case <-time.After(200 * time.Millisecond):
+			t.Errorf("expected read to extend to lifetime of job")
+		}
+	})
+
+	t.Run("Test job completes before pipe closes", func(t *testing.T) {
+		t.Parallel()
+
+		pr, pw := io.Pipe()
+
+		jobCh := make(chan struct{})
+
+		s := output.NewStreamer(pr, jobCh)
+
+		payload := []byte("Hello, world!")
+
+		pw.Write(payload)
+
+		close(jobCh)
+
+		select {
+		case <-s.Done():
+		// Finished.
+		case <-time.After(200 * time.Millisecond):
+			t.Errorf("expected pipe to close once job completes")
+		}
+
+		pw.Close()
+
+		sub := s.Subscribe()
+		defer sub.Close()
+
+		got, err := io.ReadAll(sub)
+		if err != nil {
+			t.Errorf("expected read not to return error: got '%v'", err)
+		}
+
+		if string(got) != string(payload) {
+			t.Errorf(
+				"expected data to match: got '%s', want '%s'",
+				string(got),
+				payload,
+			)
+		}
+
 	})
 }

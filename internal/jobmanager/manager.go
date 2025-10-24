@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
 
 // Manager is responsible for creating and managing Jobs.
@@ -36,10 +37,11 @@ func NewManager() *Manager {
 func (m *Manager) RunJob(
 	program string,
 	args []string,
+	limits *cgroups.ResourceLimits,
 ) (string, error) {
 	id := uuid.NewString()
 
-	job, err := NewJob(id, program, args)
+	job, err := NewJob(id, program, args, limits)
 	if err != nil {
 		return "", err
 	}

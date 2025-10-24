@@ -1,10 +1,14 @@
 .PHONY: test
 test:
-	go test -race -timeout 10s ./...
+	sudo -E go test -race -timeout 10s ./...
+
+.PHONY: test-e2e
+test-e2e:
+	sudo -E go test -tags=e2e -timeout=30s ./...
 
 .PHONY: testv
 testv:
-	go test -v -race -timeout 10s ./...
+	sudo -E go test -v -race -timeout 10s ./...
 
 .PHONY: tidy
 tidy: 
@@ -19,7 +23,7 @@ audit:
 
 .PHONY: coverage
 coverage:
-	go test -buildvcs -coverprofile=coverage.out ./... \
+	sudo -E go test -buildvcs -coverprofile=coverage.out ./... \
 		&& go tool cover -html=coverage.out
 
 .PHONY: clean
@@ -33,13 +37,28 @@ proto:
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
 		api/v1/job.proto
 
+.PHONY: proto-clean
+proto-clean:
+	rm api/v1/*.pb.go
+
+.PHONY: build-cli
+build-cli:
+	go build -o ./tmp/bin/jobctl -v ./cmd/jobctl
+
+.PHONY: run-cli
+run-cli: build-cli
+	./tmp/bin/jobctl
+
 .PHONY: build-server
 build-server:
 	go build -o ./tmp/bin/jobserver -v ./cmd/jobserver
 
 .PHONY: run-server
 run-server: build-server
-	./tmp/bin/jobserver
+	sudo -E ./tmp/bin/jobserver
+
+.PHONY: build
+build: build-server build-cli
 
 .PHONY: certs-clean
 certs-clean:

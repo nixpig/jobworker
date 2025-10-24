@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 	"github.com/nixpig/jobworker/internal/jobmanager/output"
 )
 
@@ -20,6 +21,8 @@ type Job struct {
 	interrupted atomic.Bool
 
 	cmd            *exec.Cmd
+	cgroup         *cgroups.Cgroup
+	limits         *cgroups.ResourceLimits
 	processState   atomic.Pointer[os.ProcessState]
 	outputStreamer *output.Streamer
 	pipeWriter     io.WriteCloser
@@ -42,6 +45,7 @@ func NewJob(
 	id string,
 	program string,
 	args []string,
+	limits *cgroups.ResourceLimits,
 ) (*Job, error) {
 	if program == "" {
 		return nil, fmt.Errorf("program cannot be empty")
@@ -57,12 +61,15 @@ func NewJob(
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
+	done := make(chan struct{})
+
 	j := &Job{
 		id:             id,
 		cmd:            cmd,
-		outputStreamer: output.NewStreamer(pr),
+		limits:         limits,
+		outputStreamer: output.NewStreamer(pr, done),
 		pipeWriter:     pw,
-		done:           make(chan struct{}),
+		done:           done,
 	}
 
 	j.state.Store(JobStateCreated)
@@ -72,34 +79,60 @@ func NewJob(
 
 // Start starts the Job. Trying to start a Job that is not in JobStateCreated
 // returns an InvalidStateError.
-func (j *Job) Start() error {
+func (j *Job) Start() (err error) {
 	if !j.state.CompareAndSwap(JobStateCreated, (JobStateStarting)) {
 		return NewInvalidStateError(j.state.Load(), JobStateStarting)
 	}
 
-	// TODO: Create a new cgroup and add the process to it.
+	defer func() {
+		if err != nil {
+			j.state.Store(JobStateFailed)
+			j.pipeWriter.Close()
 
-	if err := j.cmd.Start(); err != nil {
-		j.state.Store(JobStateFailed)
+			if j.cgroup != nil {
+				// TODO: If observability implemented, capture these errors.
+				j.cgroup.Kill()
+			}
 
-		j.pipeWriter.Close()
+			close(j.done)
+		}
+	}()
 
+	cgroup, err := cgroups.CreateCgroup("job-manager-"+j.id, j.limits)
+	if err != nil {
+		return fmt.Errorf("create cgroup: %w", err)
+	}
+
+	j.cgroup = cgroup
+
+	fd, err := j.cgroup.FD()
+	if err != nil {
+		return fmt.Errorf("open cgroup fd: %w", err)
+	}
+	defer fd.Close()
+
+	j.cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    int(fd.Fd()),
+	}
+
+	if err = j.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
 
 	j.pipeWriter.Close()
-
 	j.state.Store(JobStateStarted)
 
 	go func() {
 		j.cmd.Wait()
 
+		// TODO: Capture errors from these 'best effort' attempts when observability
+		// implemented.
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
+		j.cgroup.Kill()
 
 		close(j.done)
-
-		j.cleanup()
 	}()
 
 	return nil
@@ -114,9 +147,10 @@ func (j *Job) Stop() error {
 
 	j.interrupted.Store(true)
 
-	// TODO: When cgroups are implemented, use those to kill the process.
-	// In the meantime, just use cmd.Process.Kill() and accept the small risk.
-	return j.cmd.Process.Kill()
+	// TODO: Implement graceful shutdown for production:
+	// (SIGTERM -> timeout -> SIGKILL)
+	// For now, just let cgroup.kill SIGKILL all processes immediately.
+	return j.cgroup.Kill()
 }
 
 // ID returns the ID of the Job.
@@ -164,8 +198,4 @@ func (j *Job) Status() *JobStatus {
 		Signal:      sig,
 		Interrupted: j.interrupted.Load(),
 	}
-}
-
-func (j *Job) cleanup() {
-	// TODO: Remove cgroup when implemented.
 }

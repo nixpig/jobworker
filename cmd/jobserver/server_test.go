@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -79,7 +80,7 @@ func setupTestServerAndClients(
 		manager,
 		slog.New(slog.DiscardHandler),
 		&config{
-			port:       0,
+			port:       "0",
 			certPath:   serverCertPath,
 			keyPath:    serverKeyPath,
 			caCertPath: caCertPath,
@@ -245,7 +246,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		if _, err := uuid.Parse(runResp.Id); err != nil {
@@ -274,7 +275,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		_, err = operatorClient.StopJob(ctx, stopReq)
 		if err != nil {
-			t.Errorf("exptected not to get error: got '%v'", err)
+			t.Errorf("expected not to get error: got '%v'", err)
 		}
 
 		// Try stopping an already stopped job
@@ -306,7 +307,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		streamReq := &api.StreamJobOutputRequest{
@@ -317,7 +318,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 		for i := range 3 {
 			stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
 			if err != nil {
-				t.Errorf("exptected not to get error: got '%v'", err)
+				t.Errorf("expected not to get error: got '%v'", err)
 			}
 
 			var output []byte
@@ -328,7 +329,7 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 					break
 				}
 				if err != nil {
-					t.Errorf("exptected not to get error: got '%v'", err)
+					t.Errorf("expected not to get error: got '%v'", err)
 				}
 
 				output = append(output, resp.Output...)
@@ -359,7 +360,45 @@ func TestJobServerIntegrationAsOperator(t *testing.T) {
 			Signal:      "",
 			Interrupted: false,
 		})
+	})
 
+	t.Run("Test job put in cgroup", func(t *testing.T) {
+		runReq := &api.RunJobRequest{
+			Program: "/bin/bash",
+			Args:    []string{"-c", "cat /proc/self/cgroup"},
+		}
+
+		runResp, err := operatorClient.RunJob(ctx, runReq)
+		if err != nil {
+			t.Fatalf("expected not to get error: got '%v'", err)
+		}
+
+		streamReq := &api.StreamJobOutputRequest{
+			Id: runResp.Id,
+		}
+
+		stream, err := operatorClient.StreamJobOutput(ctx, streamReq)
+		if err != nil {
+			t.Errorf("expected not to get error: got '%v'", err)
+		}
+
+		var output []byte
+
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Errorf("expected not to get error: got '%v'", err)
+			}
+
+			output = append(output, resp.Output...)
+		}
+
+		if !strings.Contains(string(output), runResp.Id) {
+			t.Errorf("expected job to be in cgroup: got '%s'", output)
+		}
 	})
 }
 
@@ -380,7 +419,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		// Operator client used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		if _, err := uuid.Parse(runResp.Id); err != nil {
@@ -420,7 +459,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		// Operator used to start the job.
 		runResp, err := operatorClient.RunJob(ctx, runReq)
 		if err != nil {
-			t.Errorf("expected not to get error: got '%v'", err)
+			t.Fatalf("expected not to get error: got '%v'", err)
 		}
 
 		streamReq := &api.StreamJobOutputRequest{
@@ -431,7 +470,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 		for i := range 3 {
 			stream, err := viewerClient.StreamJobOutput(ctx, streamReq)
 			if err != nil {
-				t.Errorf("exptected not to get error: got '%v'", err)
+				t.Errorf("expected not to get error: got '%v'", err)
 			}
 
 			var output []byte
@@ -442,7 +481,7 @@ func TestJobServerIntegrationAsViewer(t *testing.T) {
 					break
 				}
 				if err != nil {
-					t.Errorf("exptected not to get error: got '%v'", err)
+					t.Errorf("expected not to get error: got '%v'", err)
 				}
 
 				output = append(output, resp.Output...)

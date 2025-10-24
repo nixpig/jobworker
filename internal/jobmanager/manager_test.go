@@ -17,7 +17,7 @@ func runTestJobInManager(
 ) string {
 	t.Helper()
 
-	id, err := m.RunJob(program, args)
+	id, err := m.RunJob(program, args, nil)
 	if err != nil {
 		t.Fatalf("expected not to receive error: got '%v'", err)
 	}

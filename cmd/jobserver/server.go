@@ -14,6 +14,7 @@ import (
 	api "github.com/nixpig/jobworker/api/v1"
 	"github.com/nixpig/jobworker/internal/auth"
 	"github.com/nixpig/jobworker/internal/jobmanager"
+	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 	"github.com/nixpig/jobworker/internal/tlsconfig"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -113,7 +114,16 @@ func (s *server) RunJob(
 		return nil, status.Error(codes.InvalidArgument, "program is empty")
 	}
 
-	id, err := s.manager.RunJob(req.Program, req.Args)
+	id, err := s.manager.RunJob(
+		req.Program,
+		req.Args,
+		// TODO: Make resource limits configurable via server config.
+		&cgroups.ResourceLimits{
+			CPUMaxPercent:  50,
+			MemoryMaxBytes: 536870912,
+			IOMaxBPS:       10485760,
+		},
+	)
 	if err != nil {
 		return nil, s.mapError("run job", err)
 	}
