@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	// NOTE: The std lib flag package would be fine, but wanted consistent UX
 	// between the client and server CLI without the overhead of cobra, so using
@@ -12,7 +13,7 @@ import (
 )
 
 type config struct {
-	port       uint16
+	port       string
 	debug      bool
 	certPath   string
 	keyPath    string
@@ -20,7 +21,12 @@ type config struct {
 }
 
 func (c *config) validate() error {
-	if c.port == 0 {
+	port, err := strconv.Atoi(c.port)
+	if err != nil {
+		return fmt.Errorf("port string to number: %w", err)
+	}
+
+	if port < 1 || port > 65535 {
 		return errors.New("port must be in valid range")
 	}
 
@@ -54,7 +60,7 @@ func (c *config) validate() error {
 func parseFlags() *config {
 	cfg := &config{}
 
-	pflag.Uint16Var(&cfg.port, "port", 8443, "gRPC server port")
+	pflag.StringVar(&cfg.port, "port", "8443", "gRPC server port")
 	pflag.BoolVar(&cfg.debug, "debug", false, "Enable debug logs")
 
 	pflag.StringVar(

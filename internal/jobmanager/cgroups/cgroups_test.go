@@ -2,6 +2,7 @@ package cgroups_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +16,66 @@ import (
 	"github.com/nixpig/jobworker/internal/jobmanager/cgroups"
 )
 
+func cleanupCgroup(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.WriteFile(
+		filepath.Join(path, "cgroup.kill"),
+		[]byte("1"),
+		0644,
+	); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("failed to write to cgroup.kill")
+	}
+
+	for {
+		populated, err := isCgroupPopulated(path)
+		if err != nil {
+			t.Fatalf("failed check if populated: %s", err)
+		}
+
+		if !populated {
+			break
+		}
+
+		if time.Now().After(time.Now().Add(5 * time.Second)) {
+			t.Fatalf("timed out waiting for empty cgroup: %s", path)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("failed to remove cgroup: %s", err)
+	}
+}
+
+func isCgroupPopulated(path string) (bool, error) {
+	eventsData, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("read cgroup.events data: %w", err)
+	}
+
+	fields := strings.Fields(string(eventsData))
+	for i, field := range fields {
+		if field == "populated" && i+1 < len(fields) {
+			return fields[i+1] == "1", nil
+		}
+	}
+
+	return false, nil
+}
+
 func TestCgroups(t *testing.T) {
 	t.Parallel()
+
+	testCgroupName := "cgroup-lifecycle-test-job"
+	testCgroupPath := "/sys/fs/cgroup/" + testCgroupName
+
+	cleanupCgroup(t, testCgroupPath)
 
 	t.Run("Test lifecycle with limits", func(t *testing.T) {
 		t.Parallel()
@@ -28,20 +87,18 @@ func TestCgroups(t *testing.T) {
 		}
 
 		cgroup, err := cgroups.CreateCgroup(
-			"cgroup-lifecycle-test-job",
+			testCgroupName,
 			limits,
 		)
 		if err != nil {
 			t.Fatalf("expected not to receive error: got '%v'", err)
 		}
 
-		// NOTE: Assuming mounted at /sys/fs/cgroup
-		wantPath := "/sys/fs/cgroup/cgroup-lifecycle-test-job"
-		if cgroup.Path() != wantPath {
+		if cgroup.Path() != testCgroupPath {
 			t.Errorf(
 				"expected cgroup path: got '%s', want '%s'",
 				cgroup.Path(),
-				wantPath,
+				testCgroupPath,
 			)
 		}
 
@@ -122,10 +179,6 @@ func TestCgroups(t *testing.T) {
 		}
 
 		var wg sync.WaitGroup
-
-		wg.Go(func() {
-			_ = cgroup.Destroy()
-		})
 
 		if err := cgroup.Kill(); err != nil {
 			t.Errorf("expected cgroup kill not to return error: got '%v'", err)

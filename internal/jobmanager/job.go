@@ -62,13 +62,15 @@ func NewJob(
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
+	done := make(chan struct{})
+
 	j := &Job{
 		id:             id,
 		cmd:            cmd,
 		limits:         limits,
-		outputStreamer: output.NewStreamer(pr),
+		outputStreamer: output.NewStreamer(pr, done),
 		pipeWriter:     pw,
-		done:           make(chan struct{}),
+		done:           done,
 	}
 
 	j.state.Store(JobStateCreated)
@@ -89,8 +91,8 @@ func (j *Job) Start() (err error) {
 			j.pipeWriter.Close()
 
 			if j.cgroup != nil {
-				// TODO: When observability implemented, capture these errors.
-				j.cgroup.Destroy()
+				// TODO: If observability implemented, capture these errors.
+				j.cgroup.Kill()
 			}
 
 			close(j.done)
@@ -130,7 +132,6 @@ func (j *Job) Start() (err error) {
 		j.processState.Store(j.cmd.ProcessState)
 		j.state.Store(JobStateStopped)
 		j.cgroup.Kill()
-		j.cgroup.Destroy()
 
 		close(j.done)
 	}()

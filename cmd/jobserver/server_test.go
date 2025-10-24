@@ -79,7 +79,7 @@ func setupTestServerAndClients(
 		manager,
 		slog.New(slog.DiscardHandler),
 		&config{
-			port:       0,
+			port:       "0",
 			certPath:   serverCertPath,
 			keyPath:    serverKeyPath,
 			caCertPath: caCertPath,

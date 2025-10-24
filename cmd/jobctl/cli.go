@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"text/tabwriter"
 
 	api "github.com/nixpig/jobworker/api/v1"
@@ -21,7 +22,7 @@ const version = "0.0.1"
 // TODO: Consider introducing config management like Viper.
 type config struct {
 	serverHostname string
-	serverPort     uint16
+	serverPort     string
 	caCertPath     string
 	certPath       string
 	keyPath        string
@@ -56,7 +57,10 @@ func (c *cli) rootCmd() *cobra.Command {
 			}
 
 			c.conn, err = grpc.NewClient(
-				fmt.Sprintf("%s:%d", cfg.serverHostname, cfg.serverPort),
+				net.JoinHostPort(
+					cfg.serverHostname,
+					cfg.serverPort,
+				),
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
 			)
 			if err != nil {
@@ -93,10 +97,10 @@ func (c *cli) rootCmd() *cobra.Command {
 		"Server hostname",
 	)
 
-	command.PersistentFlags().Uint16Var(
+	command.PersistentFlags().StringVar(
 		&cfg.serverPort,
 		"server-port",
-		8443,
+		"8443",
 		"Server port",
 	)
 
@@ -142,7 +146,7 @@ func (c *cli) startCmd() *cobra.Command {
 				return mapError(err)
 			}
 
-			cmd.OutOrStdout().Write(fmt.Appendf(nil, "%s\n", resp.Id))
+			cmd.OutOrStdout().Write([]byte(resp.Id + "\n"))
 
 			return nil
 		},

@@ -154,8 +154,9 @@ func (c *Cgroup) setIOLimit(bps int64) error {
 	return nil
 }
 
-// Kill kills all processes in the cgroup by writing to `cgroup.kill` if it
-// exists.
+// Kill kills all processes in the cgroup by writing to `cgroup.kill` (if it
+// exists), waits for the cgroup to be empty, then deletes the cgroup
+// directory.
 func (c *Cgroup) Kill() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -166,19 +167,6 @@ func (c *Cgroup) Kill() error {
 		0644,
 	); err != nil && !os.IsNotExist(err) {
 		return err
-	}
-
-	return nil
-}
-
-// Destroy disables all active controllers, waits for the cgroup to be empty,
-// then deletes the cgroup directory.
-func (c *Cgroup) Destroy() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if err := c.disableActiveControllers(); err != nil {
-		return fmt.Errorf("disable active controllers: %w", err)
 	}
 
 	// TODO: Make the timeout and interval configurable.
@@ -205,30 +193,6 @@ func (c *Cgroup) Name() string {
 
 func (c *Cgroup) Path() string {
 	return c.path
-}
-
-// disableActiveControllers disables all controllers in
-// `cgroup.subtree_control`.
-func (c *Cgroup) disableActiveControllers() error {
-	subtreeControlPath := filepath.Join(c.path, "cgroup.subtree_control")
-
-	controllersData, err := os.ReadFile(subtreeControlPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read cgroup.subtree_control: %w", err)
-	}
-
-	controllers := strings.Fields(string(controllersData))
-
-	for _, controller := range controllers {
-		if strings.HasPrefix(controller, "+") {
-			disableCmd := []byte("-" + controller[1:])
-			if err := os.WriteFile(subtreeControlPath, disableCmd, 0644); err != nil {
-				return fmt.Errorf("disable controller: %w", err)
-			}
-		}
-	}
-
-	return nil
 }
 
 // waitForEmpty waits for the cgroup to be empty by polling at a fixed interval
